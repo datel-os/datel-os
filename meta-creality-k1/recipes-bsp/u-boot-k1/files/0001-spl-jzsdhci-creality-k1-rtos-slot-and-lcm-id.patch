@@ -1,0 +1,76 @@
+spl: Creality K1 RTOS hand-off without SPL_OS_BOOT, lcm_id from the RTOS
+
+Two things the stock Creality K1 SPL does that the SDK code only does when
+the SPL boots the kernel itself (CONFIG_SPL_OS_OTA_BOOT), made available to a
+board whose SPL loads U-Boot instead:
+
+- CONFIG_SPL_RTOS_OTA_SELECT: pick rtos or rtos2 by the ota marker in the
+  "ota" partition, like the kernel slot.
+- CONFIG_K1_LCM_FROM_RTOS: the RTOS (boot splash on the second XBurst2 core)
+  leaves the detected panel id in the word its header calls
+  mapped_rtosdata_size; the stock SPL compares that word before and after the
+  RTOS ran and passes a changed value as "lcm_id=<n>". Do the same and leave
+  {CONFIG_K1_LCM_MAGIC, id} at CONFIG_K1_LCM_INFO_ADDR for U-Boot's k1slot.
+
+Also give the wait for the RTOS a 10 s limit; stock waits forever.
+
+Upstream-Status: Inappropriate [K1 OS board support on a vendor tree]
+
+--- a/common/spl/spl_jzsdhci.c
++++ b/common/spl/spl_jzsdhci.c
+@@ -1642,6 +1642,16 @@
+ {
+ 	unsigned long value;
+ 	volatile unsigned long *rtos_start = (unsigned long *)rtos_header.img_start;
++#ifdef CONFIG_K1_LCM_FROM_RTOS
++	/* Creality K1: the RTOS (boot splash) probes the panel and leaves the
++	 * panel id in the word its header calls mapped_rtosdata_size, which
++	 * the stock SPL turns into "lcm_id=<n>" on the kernel command line.
++	 * Remember the word before the RTOS runs; a changed value is the id. */
++	volatile unsigned int *lcm_slot = (unsigned int *)rtos_header.mapped_rtosdata_size;
++	unsigned int lcm_before = *lcm_slot;
++	unsigned int lcm_id = 0;
++#endif
++	int timeout = 10000;
+ 
+ 	value = *rtos_start;
+ 
+@@ -1649,12 +1659,26 @@
+ 	writel(0, CCU_IO_BASE+CCU_CSRR);
+ 
+ 	if (rtos_header.version & (1 << 0)) {
+-		while(*rtos_start == value) {
++		/* The RTOS overwrites its first word when it is done. Stock
++		 * waits forever; give it 10 s and carry on without it. */
++		while(*rtos_start == value && timeout--) {
+ 			mdelay(1);
+ 		}
++		if (timeout < 0)
++			serial_debug("rtos did not signal, continuing\n");
++#ifdef CONFIG_K1_LCM_FROM_RTOS
++		if (*lcm_slot != lcm_before)
++			lcm_id = *lcm_slot;
++#endif
+ 
+ 		stop_second_cpu();
+ 	}
++
++#ifdef CONFIG_K1_LCM_FROM_RTOS
++	writel(CONFIG_K1_LCM_MAGIC, CONFIG_K1_LCM_INFO_ADDR);
++	writel(lcm_id, CONFIG_K1_LCM_INFO_ADDR + 4);
++	serial_debug("rtos lcm_id %d\n", lcm_id);
++#endif
+ }
+ #endif
+ 
+@@ -1732,7 +1756,9 @@
+ 	int ret;
+ 	unsigned int rtos_offset = CONFIG_RTOS_OFFSET_SECTOR;
+ 
+-#ifdef CONFIG_SPL_OS_OTA_BOOT
++#if defined(CONFIG_SPL_OS_OTA_BOOT) || defined(CONFIG_SPL_RTOS_OTA_SELECT)
++	/* CONFIG_SPL_RTOS_OTA_SELECT: pick rtos/rtos2 by the ota marker even
++	 * when the SPL hands over to U-Boot instead of the kernel. */
+ 	const char *rtos_name = CONFIG_SPL_RTOS_NAME;
+ 
+ 	ret = spl_get_built_in_gpt_partition(CONFIG_SPL_OTA_NAME, &rtos_offset, NULL);

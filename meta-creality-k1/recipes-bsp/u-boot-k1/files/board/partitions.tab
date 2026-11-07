@@ -1,0 +1,23 @@
+# Creality K1 eMMC layout, as read from a stock printer (GPT at LBA 1, ten
+# entries, no entry for the bootloader area 0..1 MiB). The SPL uses this
+# table (spl_gpt_tab_data.h) to find ota, rtos/rtos2 and sn_mac by name; the
+# GPT that gpt_creator derives from it is NOT meant to be written to the eMMC.
+property:
+    disk_size = 7457m
+    gpt_header_lba = 512
+    custom_signature = 0
+
+partition:
+	#name        =  start,   size, fstype
+	ota          =     1m,     1m, EMPTY
+	sn_mac       =     2m,     1m, EMPTY
+	rtos         =     3m,     4m, EMPTY
+	rtos2        =     7m,     4m, EMPTY
+	kernel       =    11m,     8m, EMPTY
+	kernel2      =    19m,     8m, EMPTY
+	rootfs       =    27m,   300m, LINUX_FS
+	rootfs2      =   327m,   300m, LINUX_FS
+	rootfs_data  =   627m,   100m, LINUX_FS
+	userdata     =   727m,  6730m, LINUX_FS
+
+#fstype could be: LINUX_FS, FAT_FS, EMPTY

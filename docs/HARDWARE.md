@@ -47,4 +47,4 @@ Found on 5 November 2026 on the printer at 192.168.1.104 over SSH. The sources a
 ## Bootloader
 
 - Loads the `xImage` from the slot named by the marker in mmcblk0p1 and passes the kernel `console=ttyS2,115200n8 mem=256M@0x0 lcm_id=3 init=/linuxrc root=/dev/mmcblk0p7 rootwait rootfstype=squashfs ro`.
-- The U-Boot source for the X2000 is in the Ingenic SDK, but replacing the bootloader is the riskiest step. Datel OS does not change it yet.
+- It is Ingenic's U-Boot 2013.07 (SPL from sector 34, U-Boot from sector 82, its environment at 0x6A400 empty), the tree in `u-boot/` of [NebulaOS-KE/NebulaOS-kernel](https://github.com/NebulaOS-KE/NebulaOS-kernel). The SPL picks the slot and starts the kernel by itself; the RTOS (p3/p4) runs before the kernel on the second XBurst2 core and returns `lcm_id`. How it works and an open replacement built from the same tree: [BOOTLOADER.md](BOOTLOADER.md). Nothing is replaced on the printer yet.

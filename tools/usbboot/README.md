@@ -40,3 +40,20 @@ md5 -q ~/k1-usbboot/ota.out; dd if=~/Documents/K1-zaloha-2026-11-05/mmcblk0-sect
 A match means USB rescue works on this S12 board. A broken slot 2 can then be undone with `sudo ./usbboot --uboot && sudo ./usbboot --swap-ota`.
 
 Used for real on 14 November 2026: the first Linux 6.18 kernel stopped before the first service on every start, and the marker swap from mask-ROM mode brought the reference printer back to the other slot.
+
+## Starting the open bootloader from RAM
+
+The same mask-ROM mode and the same `usbboot`, with the output of the `u-boot-k1` recipe (`./build.sh u-boot-k1`, files in `build/tmp/deploy/images/creality-k1/`) in place of Ingenic's binaries. Nothing is written to the eMMC until you run `saveenv` or `k1slot select` yourself: those store the 32 KiB environment at byte 0x6A400, in the empty part of the bootloader area.
+
+Connect a USB-UART adapter to J1 first (115200 8n1; GND, RX and TX only). Without the console there is nothing to watch.
+
+```bash
+cd ~/k1-usbboot
+cp /path/to/deploy/u-boot-k1-usb-stage1.bin /path/to/deploy/u-boot-k1.bin .
+sudo ./usbboot --cpu x2000 --stage1 u-boot-k1-usb-stage1.bin   # SPL: DDR init, returns to the ROM
+sudo ./usbboot --cpu x2000 --stage2 u-boot-k1.bin              # U-Boot at 0x80100000
+```
+
+The console shows `U-Boot SPL 2013.07`, `DDR: ... type is : LPDDR3`, `run start1 firmware finished, return to bootrom!`, then `U-Boot 2013.07 ... Board: Creality K1 mainboard ...` and the countdown. Press a key and go on by [docs/BOOTLOADER.md](../../docs/BOOTLOADER.md) (`k1slot status`, `mmc info`, `k1slot load`, `bootm`). RESET brings the printer back to the stock bootloader in the eMMC.
+
+If our stage 1 does not get through the DDR init on the S12 board (the console goes quiet after `DDR:`), use `sudo ./usbboot --uboot` (Ingenic's `spl.bin` and burner) and send only our U-Boot: `sudo ./usbboot --cpu x2000 --stage2 u-boot-k1.bin`.

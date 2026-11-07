@@ -12,7 +12,8 @@ SRC_URI = "file://after-volatile-lib.conf file://usr-data.mount file://k1os-data
            file://k1os-bootlog.service file://k1os-bootlog.timer file://10-watchdog.conf file://k1os-logstream.service \
            file://k1os-health file://k1os-health.service file://k1os-health.timer file://10-k1os-journald.conf \
            file://k1os-zram-swap file://k1os-zram-swap.service file://60-k1os-memory.conf file://k1os-memory-tmpfiles.conf \
-           file://k1os-seed-webcam file://k1os-seed-webcam.service"
+           file://k1os-seed-webcam file://k1os-seed-webcam.service \
+           file://fw_env.config"
 SRC_URI += "file://k1os-htop.sh"
 S = "${WORKDIR}"
 
@@ -54,6 +55,7 @@ do_install() {
     install -D -m 0644 ${WORKDIR}/k1os-memory-tmpfiles.conf ${D}${sysconfdir}/tmpfiles.d/k1os-memory.conf
     install -d ${D}${sysconfdir}/systemd/journald.conf.d
     install -m 0644 ${WORKDIR}/10-k1os-journald.conf ${D}${sysconfdir}/systemd/journald.conf.d/
+    install -m 0644 ${WORKDIR}/fw_env.config ${D}${sysconfdir}/fw_env.config
     install -d ${D}${sysconfdir}/systemd/network
     install -m 0644 ${WORKDIR}/80-wlan.network ${D}${sysconfdir}/systemd/network/
     install -d ${D}${sysconfdir}/systemd/system/serial-getty@ttyS2.service.d
@@ -66,4 +68,5 @@ do_install() {
 }
 
 FILES:${PN} += "${systemd_system_unitdir} /usr/data"
-RDEPENDS:${PN} += "util-linux-mountpoint wpa-supplicant openssh-keygen iproute2"
+# libubootenv-bin: fw_printenv and fw_setenv for the open bootloader's boot counter
+RDEPENDS:${PN} += "util-linux-mountpoint wpa-supplicant openssh-keygen iproute2 libubootenv-bin"

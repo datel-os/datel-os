@@ -37,7 +37,7 @@ What ran on the reference printer for the versions before it, on 17 November 202
 | Updates | Write the inactive slot over SSH, trial boot, GitHub Releases from tags |
 | Staying alive | Hardware watchdog, compressed swap, an OOM kill instead of a freeze with the print killed last, the journal kept across a reboot and sent to a syslog server, a health line every minute, a flight recorder that keeps the last 15 minutes before Klipper stops |
 | Display and touch | **Missing.** The screen shows the RTOS boot logo only |
-| Own bootloader | In progress on branch `feat/uboot`, not verified on the printer |
+| Own bootloader | `./build.sh u-boot-k1` builds an SPL and U-Boot with a boot counter from the SDK tree the stock one was built from; it has never run on a printer and nothing installs it, see [docs/BOOTLOADER.md](docs/BOOTLOADER.md) |
 
 ## Limitations
 

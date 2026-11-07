@@ -1,0 +1,26 @@
+main: fall back to the built-in bootcmd when the environment has none
+
+If a tool in Linux writes a fresh environment that lacks bootcmd (fw_setenv
+on a corrupt or empty area creates one from scratch), U-Boot would sit at the
+prompt and the printer would not boot. Use CONFIG_BOOTCOMMAND in that case;
+the K1 boot path reads its parameters with defaults, so it works without any
+saved variable.
+
+Upstream-Status: Inappropriate [K1 OS board support on a vendor tree]
+
+--- a/common/main.c
++++ b/common/main.c
+@@ -387,6 +387,13 @@
+ 	else
+ #endif /* CONFIG_BOOTCOUNT_LIMIT */
+ 		s = getenv ("bootcmd");
++#ifdef CONFIG_BOOTCOMMAND
++	/* A saved environment without bootcmd (for example written by a
++	 * userspace tool from scratch) must not leave the board at the
++	 * prompt: fall back to the built-in boot command. */
++	if (!s)
++		s = CONFIG_BOOTCOMMAND;
++#endif
+ #ifdef CONFIG_OF_CONTROL
+ 	/* Allow the fdt to override the boot command */
+ 	env = fdtdec_get_config_string(gd->fdt_blob, "bootcmd");
