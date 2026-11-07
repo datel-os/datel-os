@@ -139,6 +139,13 @@ prostředí, `fw_setenv` z Linuxu.
 
 ## Zkouška z RAM přes USB (nic se nezapisuje)
 
+Přes SSH to nejde: bootloader běží dřív než Linux a jediná cesta, jak ho
+spustit bez zápisu do eMMC, je USB boot ROM čipu (tlačítko BOOT + MicroUSB).
+Stejnou cestou vede i záchrana po nepovedeném zápisu, proto se do eMMC
+nezapisuje, dokud u tiskárny nikdo fyzicky není. Stav 7. 11. 2026: Mac
+připravený (`~/k1-usbboot/` s přeloženým usbboot a oběma soubory), zkouška
+čeká na fyzický přístup k tiskárně.
+
 Potřeba: usbboot přeložený podle `tools/usbboot/README.md`, USB-UART na J1
 (115200, GND + RX/TX; napájení z desky, 3,3 V), MicroUSB k Macu, deska v režimu
 mask-ROM (BOOT + RESET). Soubory z `tmp/deploy/images/creality-k1/` zkopírovat
@@ -203,7 +210,7 @@ neověřené, proto zkouška z RAM předchází zápisu.
 
 ## Co zbývá
 
-- Zkouška z RAM na tiskárně (uživatel připojí USB-UART na J1).
+- Zkouška z RAM na tiskárně (čeká na fyzický přístup: USB-UART na J1, MicroUSB, BOOT + RESET).
 - Po ní rozhodnutí o zápisu do eMMC.
 - U-Boot čte eMMC ovladačem SDHCI SDK bez HS200; jádro 4 MiB se načte do ~1 s.
   Časem `MMC_MODE_8BIT` + vyšší takt.
