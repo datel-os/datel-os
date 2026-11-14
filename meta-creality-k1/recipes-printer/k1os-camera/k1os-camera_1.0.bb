@@ -17,7 +17,7 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/../k1os-stream/files:${THISDIR}/../k1os-h
 SRC_URI = "file://main.zig file://stun.zig file://srtp.zig file://rtp.zig file://rtmp.zig \
            file://publish.zig file://camera.zig file://mp4.zig file://h264-to-mp4.zig \
            file://dtls.c file://cfg/mbedtls_user.h file://build.sh \
-           file://k1os-stream.c file://k1os-stream.h \
+           file://k1os-stream.c file://k1os-stream.h file://pace.h file://pace_test.c \
            file://overlay.c file://overlay.h file://moonraker.c file://moonraker.h \
            file://graph.c file://graph.h file://sysstat.c file://sysstat.h \
            file://font12x24.h file://font16x32.h file://LICENSE.spleen \
@@ -43,6 +43,9 @@ do_compile() {
     zig test main.zig -target ${BUILD_ARCH}-linux-musl -lc
     zig test camera.zig -target ${BUILD_ARCH}-linux-musl -lc
     zig test h264-to-mp4.zig -target ${BUILD_ARCH}-linux-musl -lc
+    # k1os-stream's pace (pace.h), tried on made-up cameras
+    zig cc -target ${BUILD_ARCH}-linux-musl -std=gnu11 -Wall -Wextra -O1 pace_test.c -o pace_test
+    ./pace_test
     MBEDTLS=${WORKDIR}/mbedtls-${MBEDTLS_PV} K1OS_STREAM=${S} K1OS_HELIX=${S} sh ${S}/build.sh
 }
 

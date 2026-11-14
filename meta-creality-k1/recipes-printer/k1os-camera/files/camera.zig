@@ -49,6 +49,7 @@ extern fn fcntl(fd: c_int, cmd: c_int, ...) c_int;
 extern fn write(fd: c_int, buf: [*]const u8, len: usize) isize;
 extern fn close(fd: c_int) c_int;
 extern fn usleep(usec: c_uint) c_int;
+extern fn eventfd(initval: c_uint, flags: c_int) c_int;
 extern fn dprintf(fd: c_int, fmt: [*:0]const u8, ...) c_int;
 extern fn __errno_location() *c_int;
 
@@ -117,9 +118,24 @@ pub fn snapshot(out: []u8) ?[]u8 {
 }
 
 // The encoder takes its frames here (k1os_stream_hooks.frame and
-// frame_done). The frame stays locked while the encoder copies it.
+// frame_done). The frame stays locked while the encoder copies it. It makes
+// a picture when a frame comes, not by a clock of its own, so it waits on
+// `frame_event` (k1os_stream_hooks.frame_fd): an eventfd that the camera
+// thread adds one to for every frame.
 
 var encoder_seq: u32 = 0;
+var frame_event: c_int = -1;
+
+/// Once, before the camera thread and the encoder run. False when there is
+/// no descriptor to be had.
+pub fn init() bool {
+    frame_event = eventfd(0, linux.EFD.CLOEXEC | linux.EFD.NONBLOCK);
+    return frame_event >= 0;
+}
+
+pub fn frameFd() c_int {
+    return frame_event;
+}
 
 pub fn hookFrame(_: ?*anyopaque, data: *[*]const u8, len: *usize) callconv(.c) c_int {
     frame_mutex.lock();
@@ -316,6 +332,10 @@ pub fn task(_: ?*anyopaque) callconv(.c) ?*anyopaque {
             frame_seq +%= 1;
             if (frame_seq == 0) frame_seq = warmup_frames + 1;
             frame_ms = nowMs();
+            // Counted while the frame is still locked: the encoder then never
+            // holds a frame whose count it has yet to read.
+            const one: u64 = 1;
+            _ = write(frame_event, @ptrCast(&one), @sizeOf(u64));
             frame_mutex.unlock();
             _ = frames_total.fetchAdd(1, .seq_cst);
             // only this thread writes `frame`, so it can read it unlocked

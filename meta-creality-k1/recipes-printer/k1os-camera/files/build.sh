@@ -9,7 +9,8 @@
 #   MBEDTLS=<mbedtls 3.6 release tree> K1OS_STREAM=<directory of k1os-stream.c> \
 #   K1OS_HELIX=<directory of helix_c.zig> ./build.sh
 #
-# The unit tests run on the build machine: zig test main.zig
+# The unit tests run on the build machine: zig test main.zig, and for
+# k1os-stream's pace: cc pace_test.c -o pace_test && ./pace_test
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 : "${MBEDTLS:?}" "${K1OS_STREAM:?}" "${K1OS_HELIX:?}"

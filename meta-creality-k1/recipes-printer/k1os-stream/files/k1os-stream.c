@@ -1,6 +1,7 @@
 /* k1os-stream: MJPEG camera frames -> Helix JPEG decoder -> status overlay
- * -> Helix H.264 encoder -> raw Annex B H.264, at a steady frame rate and
- * with a rate controller that picks each picture's quantiser.
+ * -> Helix H.264 encoder -> raw Annex B H.264, a picture as each camera
+ * frame comes (pace.h says when) and with a rate controller that picks each
+ * picture's quantiser.
  *
  * It is a part of k1os-camera, which hands it the camera's frames and takes
  * the pictures (k1os-stream.h). Frames can also come from a JPEG stream on a
@@ -30,6 +31,7 @@
 #include "k1os-stream.h"
 #include "moonraker.h"
 #include "overlay.h"
+#include "pace.h"
 #include "sysstat.h"
 
 #define CAM_BUFS 3
@@ -145,7 +147,7 @@ static int src_open_stream(struct jpeg_src *s, int fd)
 static void src_open_hook(struct jpeg_src *s, const struct k1os_stream_hooks *hooks)
 {
 	memset(s, 0, sizeof *s);
-	s->fd = -1;     /* nothing to poll: the waits become plain sleeps */
+	s->fd = hooks->frame_fd;        /* readable when the caller has a new frame */
 	s->held = -1;
 	s->pending = -1;
 	s->hook = hooks;
@@ -293,11 +295,15 @@ static void cam_requeue(struct jpeg_src *s, int idx)
 
 /* Consume what the source has ready, so that poll() does not spin: camera
  * buffers are dequeued (only the newest is kept), stdin is read into the
- * buffer. Returns -1 at the end of the stream or on an error. */
+ * buffer, the caller's count of new frames is taken. Returns 1 when
+ * something came, 0 when nothing did, -1 at the end of the stream or on an
+ * error. */
 static int src_fill(struct jpeg_src *s)
 {
+	int got = 0;
 	if (s->hook) {
-		return 0;
+		uint64_t n;
+		return read(s->fd, &n, sizeof n) == (ssize_t)sizeof n;
 	}
 	if (s->is_v4l2) {
 		for (;;) {
@@ -307,11 +313,12 @@ static int src_fill(struct jpeg_src *s)
 			b.memory = V4L2_MEMORY_MMAP;
 			if (xioctl(s->fd, VIDIOC_DQBUF, &b) < 0) {
 				if (errno == EAGAIN) {
-					return 0;
+					return got;
 				}
 				fprintf(stderr, "camera: DQBUF: %s\n", strerror(errno));
 				return -1;
 			}
+			got = 1;
 			s->received++;
 			if (s->pending >= 0) {
 				cam_requeue(s, s->pending);
@@ -329,7 +336,7 @@ static int src_fill(struct jpeg_src *s)
 			n = read(s->fd, s->buf + s->len, s->cap - s->len);
 			if (n < 0) {
 				if (errno == EAGAIN || errno == EINTR) {
-					return 0;
+					return got;
 				}
 				fprintf(stderr, "stdin: read: %s\n", strerror(errno));
 				return -1;
@@ -338,6 +345,7 @@ static int src_fill(struct jpeg_src *s)
 				fprintf(stderr, "stdin: end of the JPEG stream\n");
 				return -1;
 			}
+			got = 1;
 			s->len += n;
 		}
 	}
@@ -350,6 +358,12 @@ static int src_take(struct jpeg_src *s, const uint8_t **data, size_t *len)
 	if (s->hook) {
 		int r = s->hook->frame(s->hook->ctx, data, len);
 		if (r > 0) {
+			uint64_t n;
+			/* This is the newest frame, and the caller counts a frame before
+			 * it hands it out: what is counted by now is this one or older. */
+			if (read(s->fd, &n, sizeof n) < 0) {
+				/* nothing was */
+			}
 			s->hook_held = 1;
 			s->received++;
 		}
@@ -537,7 +551,8 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 	double last_kbit = 0;
 	static struct temp_history hist;
 	struct printer_state pstate;
-	int64_t period, next_tick, last_lines = 0, last_stats;
+	struct pace pace;
+	int64_t last_lines = 0, last_stats;
 	unsigned have_frame = 0, misses = 0;
 	unsigned long frames = 0, repeats = 0, decoded = 0, skipped = 0;
 	uint64_t dec_ns = 0, enc_ns = 0;
@@ -602,6 +617,10 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 	}
 
 	if (hooks->frame) {
+		if (hooks->frame_fd < 0) {
+			fprintf(stderr, "k1os-stream: frames from the caller come with frame_fd\n");
+			goto out;
+		}
 		src_open_hook(&src, hooks);
 	} else if (!strcmp(camera, "-")) {
 		if (src_open_stream(&src, hooks->jpeg_fd) < 0) {
@@ -708,45 +727,52 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 		goto out;
 	}
 
-	period = 1000000000LL / fps;
-	next_tick = now_ns();
-	last_stats = next_tick;
+	pace_init(&pace, fps, now_ns());
+	last_stats = pace.due;
 
 	while (!stop_now && (max_frames == 0 || frames < max_frames)) {
 		const uint8_t *jpeg;
 		size_t jlen;
-		int64_t t0, t1, t2;
-		int r, n, key, fresh = 0;
+		int64_t now = 0, t0, t1, t2;
+		int r = 0, n, key, fresh = 0, waiting = 0;
+		enum pace_do what = PACE_WAIT;
 		struct iovec iov[2];
 		size_t used;
 
-		/* wait for the tick, picking up camera frames meanwhile */
+		/* wait until a picture is to be made: of a camera frame when one
+		 * comes, of the last picture again when none does (pace.h) */
 		for (;;) {
-			int64_t now = now_ns();
 			struct pollfd p = { src.fd, POLLIN, 0 };
-			if (now >= next_tick) {
+			int64_t wait_ns = 0;
+			int got = src_fill(&src);
+			if (got < 0) {
+				eof = 1;
 				break;
 			}
-			poll(&p, 1, (int)((next_tick - now) / 1000000 + 1));
-			if (p.revents & (POLLIN | POLLERR | POLLHUP)) {
-				if (src_fill(&src) < 0) {
-					eof = 1;
-					break;
-				}
+			waiting |= got;
+			now = now_ns();
+			what = pace_next(&pace, now, waiting, got, &wait_ns);
+			if (what != PACE_WAIT || stop_now) {
+				break;
 			}
+			poll(&p, 1, (int)(wait_ns / 1000000) + 1);
 		}
-		if (eof) {
+		if (eof || stop_now) {
 			break;
 		}
 
 		t0 = now_ns();
-		if (src_fill(&src) < 0) {
-			break;
+		if (what != PACE_REPEAT) {
+			r = src_take(&src, &jpeg, &jlen);
+			if (r < 0) {
+				break;
+			}
+			if (r == 0) {
+				/* not a whole frame yet, or the camera has just gone: look again */
+				continue;
+			}
 		}
-		r = src_take(&src, &jpeg, &jlen);
-		if (r < 0) {
-			break;
-		}
+		pace_made(&pace, now, what);
 		if (r > 0) {
 			unsigned w2 = 0, h2 = 0;
 			int d;
@@ -775,7 +801,6 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 		dec_ns += t1 - t0;
 
 		if (!have_frame) {
-			next_tick += period;
 			continue;
 		}
 		if (r <= 0) {
@@ -821,7 +846,6 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 				fprintf(stderr, "k1os-stream: no picture for 5 s: %s\n", helix_codec_why());
 				break;
 			}
-			next_tick += period;
 			continue;
 		}
 		misses = 0;
@@ -878,12 +902,6 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 			last_stats = t2;
 			frames_stats = 0;
 			bits_stats = 0;
-		}
-
-		next_tick += period;
-		if (now_ns() > next_tick + period) {
-			/* too slow: do not try to catch up, keep the real-time pace */
-			next_tick = now_ns();
 		}
 	}
 
