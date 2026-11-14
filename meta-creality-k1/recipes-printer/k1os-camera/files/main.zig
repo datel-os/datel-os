@@ -97,6 +97,7 @@ const StreamHooks = extern struct {
     ctx: ?*anyopaque = null,
     frame: ?*const fn (?*anyopaque, *[*]const u8, *usize) callconv(.c) c_int = null,
     frame_done: ?*const fn (?*anyopaque) callconv(.c) void = null,
+    frame_fd: c_int = -1,
 };
 extern fn k1os_stream_run(argc: c_int, argv: [*]const ?[*:0]u8, hooks: *const StreamHooks) c_int;
 extern fn k1os_stream_stop() void;
@@ -1085,7 +1086,7 @@ fn encode() void {
 
     _ = dprintf(2, "k1os-camera: encoder started\n");
     encoder_running.store(true, .seq_cst);
-    const hooks: StreamHooks = .{ .jpeg_fd = -1, .picture = onPicture, .frame = camera.hookFrame, .frame_done = camera.hookDone };
+    const hooks: StreamHooks = .{ .jpeg_fd = -1, .picture = onPicture, .frame = camera.hookFrame, .frame_done = camera.hookDone, .frame_fd = camera.frameFd() };
     const result = k1os_stream_run(@intCast(argc), &argv, &hooks);
     encoder_running.store(false, .seq_cst);
     _ = dprintf(2, "k1os-camera: encoder stopped (%d)\n", result);
@@ -1133,6 +1134,10 @@ pub fn main(init: std.process.Init.Minimal) u8 {
     if (helix_mode) {
         camera.settings = cameraSettings;
         camera.needed_elsewhere = wanted;
+        if (!camera.init()) {
+            _ = dprintf(2, "k1os-camera: no descriptor to count the camera's frames with\n");
+            return 1;
+        }
         _ = pthread_create(&thread, null, camera.task, null);
     }
     _ = dprintf(2, "k1os-camera: listening on %d\n", @as(c_int, port));

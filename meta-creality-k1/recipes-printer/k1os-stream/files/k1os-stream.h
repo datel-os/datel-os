@@ -24,6 +24,10 @@ struct k1os_stream_hooks {
 	 * will be no more; the frame stays valid until frame_done(). */
 	int (*frame)(void *ctx, const uint8_t **data, size_t *len);
 	void (*frame_done)(void *ctx);
+	/* With frame(): an eventfd the caller adds one to for every new frame,
+	 * before frame() can hand that frame out. The run waits on it, so that a
+	 * picture is made when a frame comes, and reads it. */
+	int frame_fd;
 };
 
 /* Runs until k1os_stream_stop(), the end of the camera frames or an error;
