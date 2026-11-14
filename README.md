@@ -2,7 +2,7 @@
 
 # Datel OS
 
-Open firmware for the Creality K1, built from source with Yocto: Linux 6.6-rt, Kalico with open firmware for all three MCUs, Moonraker, Mainsail, camera streaming, hardware-encoded timelapse and Twitch live streaming. The stock bootloader stays in place and the second eMMC slot always holds a way back.
+Open firmware for the Creality K1, built from source with Yocto: Linux 6.18, Kalico with open firmware for all three MCUs, Moonraker, Mainsail, camera streaming, hardware-encoded timelapse and Twitch live streaming. The stock bootloader stays in place and the second eMMC slot always holds a way back.
 
 **Pre-release for developers.** It runs on the author's K1 in both A/B slots. The display does not work yet, recovery from a kernel that fails to boot needs a USB cable, and everything is verified on one printer. Since version 0.5.0 the CPU runs at 816 MHz to stop wrong floating point results; the first prints with that kernel, 97 and 31 minutes, ran without a step error. Read [Limitations](#limitations) before installing.
 
@@ -10,7 +10,7 @@ Open firmware for the Creality K1, built from source with Yocto: Linux 6.6-rt, K
 
 | Area | State |
 |---|---|
-| Kernel | Linux 6.6.157 PREEMPT_RT (Ingenic X2000, NebulaOS tree) with a K1 device tree: eMMC, Wi-Fi with the stock MAC, all three MCU UARTs, UVC camera, Helix video codec. The CPU runs at 816 MHz instead of the boot loader's 1200 ([why](docs/DIAGNOSTICS.md#cpu-clock-and-floating-point)) |
+| Kernel | Linux 6.18.63, kernel.org's stable kernel with the K1's support from [zales/k1-linux](https://github.com/zales/k1-linux) (the Ingenic X2000 platform and drivers, a K1 device tree): eMMC, Wi-Fi with the stock MAC, all three MCU UARTs, UVC camera, Helix video codec. The CPU runs at 816 MHz instead of the boot loader's 1200 ([why](docs/DIAGNOSTICS.md#cpu-clock-and-floating-point)) |
 | System | Yocto scarthgap, systemd, read-only squashfs root, data in `/usr/data/k1os`, A/B slots with a trial boot that falls back to the other slot |
 | Printing | Kalico with open firmware on all three MCUs, load cell probe, verified prints |
 | Web UI | Moonraker and Mainsail behind nginx, printer name and camera registered on first boot |
@@ -95,7 +95,7 @@ Our code, recipes, scripts, documentation and artwork are under the MIT license 
 
 | Component | License | Source |
 |---|---|---|
-| Linux 6.6 (Ingenic X2000, NebulaOS) | GPL-2.0 | [NebulaOS-KE/NebulaOS-kernel](https://github.com/NebulaOS-KE/NebulaOS-kernel) |
+| Linux 6.18 with the K1's support | GPL-2.0 | [zales/k1-linux](https://github.com/zales/k1-linux); the platform code there is carried over from [NebulaOS-KE/NebulaOS-kernel](https://github.com/NebulaOS-KE/NebulaOS-kernel) (Ingenic's SDK kernel 6.6) |
 | Kalico host and MCU firmware | GPL-3.0 | [pellcorp/kalico](https://github.com/pellcorp/kalico), [zales/k1-kalico-firmware](https://github.com/zales/k1-kalico-firmware) (a fork of pellcorp/k1-kalico-firmware) |
 | Moonraker, Mainsail, moonraker-timelapse | GPL-3.0 | upstream |
 | Mbed TLS 3.6.2 (the DTLS handshake of WebRTC, inside `k1os-camera`) | Apache-2.0 | [Mbed-TLS/mbedtls](https://github.com/Mbed-TLS/mbedtls) |
