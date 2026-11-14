@@ -13,12 +13,9 @@
 # Quality: the CRF from the Timelapse settings in Mainsail becomes the fixed
 # quantiser of the encoder (QP = CRF + 5, so the default CRF 23 gives QP 28,
 # about 2 to 4 Mbit/s at 720p30). /usr/data/k1os/timelapse.env may set
-# HELIX_QP (18..51) to override it, HELIX_GOP (keyframe interval, 30),
-# HELIX_JPEG=0 to decode the JPEGs in software (67 ms a frame instead of 11 ms
-# on the Helix)
+# HELIX_QP (18..51) to override it, HELIX_GOP (keyframe interval, 30)
 # and HELIX_PROGRESS=1 for a progress bar along the bottom of the video (frame
-# N of all frames, so the print's progress); for tests also MP4, ENC and
-# HELIX_DEV (the codec's V4L2 node).
+# N of all frames, so the print's progress); for tests also MP4 and ENC.
 
 # Moonraker starts this and hands down its protection from the OOM killer;
 # a render is the kind of thing that should go before the print does.
@@ -26,9 +23,6 @@ echo 500 > /proc/$$/oom_score_adj 2>/dev/null
 [ -r /usr/data/k1os/timelapse.env ] && . /usr/data/k1os/timelapse.env
 MP4=${MP4:-/usr/bin/h264-to-mp4}
 ENC=${ENC:-/usr/bin/k1os-helix-enc}
-HELIX_DEV=${HELIX_DEV:-/dev/video1}
-decflag=
-[ "${HELIX_JPEG:-1}" = 0 ] && decflag=-S
 progress=
 [ "${HELIX_PROGRESS:-0}" = 1 ] && progress=1
 
@@ -66,7 +60,7 @@ progflag=
 # The raw H.264 carries no timestamps; h264-to-mp4 gives every picture the
 # same duration, 1/fps.
 fps=${fps%.*}
-if ls "$dir"/frame*.jpg 2>/dev/null | sort | "$ENC" -d "$HELIX_DEV" $decflag $progflag -q "$qp" -g "${HELIX_GOP:-30}" -o "$h264" - 2>&1 &&
+if ls "$dir"/frame*.jpg 2>/dev/null | sort | "$ENC" $progflag -q "$qp" -g "${HELIX_GOP:-30}" -o "$h264" - 2>&1 &&
    "$MP4" "${fps:-30}" "$h264" "$out"; then
     rm -f "$h264"
     exit 0

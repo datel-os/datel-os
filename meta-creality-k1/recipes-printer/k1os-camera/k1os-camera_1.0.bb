@@ -2,25 +2,27 @@ SUMMARY = "k1os-camera: the camera as MJPEG, snapshots, H.264 over WebRTC and a 
 DESCRIPTION = "Takes the place of uStreamer, go2rtc and of ffmpeg as the RTMP sender. It \
 reads the USB camera, serves its JPEG frames (the stream and snapshots Mainsail and the \
 timelapse use), and while anyone watches runs k1os-stream's pipeline inside itself: status \
-overlay and H.264 on the X2000 Helix codec. That H.264 goes to browsers over WebRTC \
+overlay and H.264 on the X2000 Helix codec (k1os-helix's code, through /dev/helix). That H.264 goes to browsers over WebRTC \
 (ICE-lite, SRTP and RTP are its own; the DTLS handshake is mbedtls) and to Twitch over \
 RTMP. Also builds h264-to-mp4, which wraps the timelapse's H.264 into an MP4 file. \
-Written in Zig; the camera, overlay and codec part is k1os-stream's C, compiled in."
+Written in Zig; the camera and overlay part is k1os-stream's C, compiled in."
 LICENSE = "MIT & (Apache-2.0 | GPL-2.0-or-later) & BSD-2-Clause"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302 \
                     file://mbedtls-${MBEDTLS_PV}/LICENSE;md5=379d5819937a6c2f1ef1630d341e026d \
                     file://LICENSE.spleen;md5=6b0faaab001f2e05d12e136feb82cf71"
 
 MBEDTLS_PV = "3.6.2"
-# k1os-stream's sources are compiled into this program as they are
-FILESEXTRAPATHS:prepend := "${THISDIR}/../k1os-stream/files:"
+# k1os-stream's sources and k1os-helix's codec are compiled into this program as they are
+FILESEXTRAPATHS:prepend := "${THISDIR}/../k1os-stream/files:${THISDIR}/../k1os-helix/files:"
 SRC_URI = "file://main.zig file://stun.zig file://srtp.zig file://rtp.zig file://rtmp.zig \
            file://publish.zig file://camera.zig file://mp4.zig file://h264-to-mp4.zig \
            file://dtls.c file://cfg/mbedtls_user.h file://build.sh \
-           file://k1os-stream.c file://k1os-stream.h file://helix.c file://helix.h \
+           file://k1os-stream.c file://k1os-stream.h \
            file://overlay.c file://overlay.h file://moonraker.c file://moonraker.h \
            file://graph.c file://graph.h file://sysstat.c file://sysstat.h \
-           file://font12x24.h file://font16x32.h file://jpeg_dht.h file://LICENSE.spleen \
+           file://font12x24.h file://font16x32.h file://LICENSE.spleen \
+           file://helix.zig file://helix_jpeg.zig file://helix_h264.zig file://helix_cabac.zig \
+           file://helix_codec.zig file://helix_c.zig file://helix_codec.h \
            https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-${MBEDTLS_PV}/mbedtls-${MBEDTLS_PV}.tar.bz2;name=mbedtls \
            file://k1os-camera.service file://k1os-camera-options file://k1os-camera-device"
 SRC_URI[mbedtls.sha256sum] = "8b54fb9bcf4d5a7078028e0520acddefb7900b3e66fec7f7175bb5b7d85ccdca"
@@ -41,7 +43,7 @@ do_compile() {
     zig test main.zig -target ${BUILD_ARCH}-linux-musl -lc
     zig test camera.zig -target ${BUILD_ARCH}-linux-musl -lc
     zig test h264-to-mp4.zig -target ${BUILD_ARCH}-linux-musl -lc
-    MBEDTLS=${WORKDIR}/mbedtls-${MBEDTLS_PV} K1OS_STREAM=${S} sh ${S}/build.sh
+    MBEDTLS=${WORKDIR}/mbedtls-${MBEDTLS_PV} K1OS_STREAM=${S} K1OS_HELIX=${S} sh ${S}/build.sh
 }
 
 do_install() {

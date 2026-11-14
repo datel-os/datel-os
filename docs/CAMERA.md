@@ -26,7 +26,7 @@ Moonraker gets three cameras, all from the same camera:
 
 Mainsail shows every camera at once until one is picked, and the pick is stored for all browsers; the first boot picks **K1 (WebRTC)**, an update from an older release does that once as well.
 
-`k1os-camera` starts the encoder (k1os-stream's pipeline, built into it: JPEG decode, overlay and H.264 on the Helix) for the first viewer and stops it after the last one leaves, so the WebRTC camera costs nothing while nobody watches. A viewer who joins gets a key picture at once and sees the picture in under half a second. The picture follows the Twitch settings in `/usr/data/k1os/twitch.env` (bitrate, frame rate, overlay); changing them in the TWITCH dialog restarts `k1os-camera`, and an open WebRTC view reconnects. Signalling is camera-streamer's protocol, `POST /webcam/webrtc`; the daemon is an ICE-lite agent and offers one UDP port per viewer on the address that viewer reached the printer by, so it works on the local network and over a VPN, not through NAT. Packets a viewer reports as lost are sent again. With one WebRTC viewer the daemon uses about 2 MB of memory and 8 % of one core, encoder included.
+`k1os-camera` starts the encoder (k1os-stream's pipeline, built into it: JPEG decode, overlay and H.264 on the Helix) for the first viewer and stops it after the last one leaves, so the WebRTC camera costs nothing while nobody watches. A viewer who joins gets a key picture at once and sees the picture in under half a second. The picture follows the Twitch settings in `/usr/data/k1os/twitch.env` (bitrate, frame rate, overlay); changing them in the TWITCH dialog restarts `k1os-camera`, and an open WebRTC view reconnects. Signalling is camera-streamer's protocol, `POST /webcam/webrtc`; the daemon is an ICE-lite agent and offers one UDP port per viewer on the address that viewer reached the printer by, so it works on the local network and over a VPN, not through NAT. Packets a viewer reports as lost are sent again. With one WebRTC viewer at 1280×720 and 30 fps the daemon uses about 8 MB of memory and, encoder included, 7 % of one core without the overlay, 8 % with the status bar and 20 % with the graph panels, which are put into the picture on the CPU.
 
 ### Viewer limits
 
@@ -43,7 +43,7 @@ Timelapse uses [moonraker-timelapse](https://github.com/mainsail-crew/moonraker-
 | Part | What it does |
 |---|---|
 | Moonraker component `[timelapse]` | Takes a snapshot per layer or per interval, offers the Timelapse panel in Mainsail. Frames go to `/usr/data/k1os/timelapse/frames/`, videos to `/usr/data/k1os/timelapse/` |
-| `k1os-helix-enc` | Decodes the JPEG frames on the Helix (libjpeg-turbo with `-S`, and when the Helix refuses a frame) and encodes them through `/dev/video1` into an H.264 stream |
+| `k1os-helix-enc` | Decodes the JPEG frames and encodes them into an H.264 stream, both on the Helix. A frame that is damaged or of another size is reported and left out |
 | `timelapse-render` | Stands in for ffmpeg in the component's configuration (there is no ffmpeg on the printer): runs the codec and lets `h264-to-mp4` write the MP4 file around the stream. Rotating or flipping is not possible on this path |
 
 ### Use
@@ -62,7 +62,6 @@ The panel's CRF setting becomes the encoder's fixed quantiser (QP = CRF + 5, def
 |---|---|
 | `HELIX_QP=28` | Quantiser when the panel's CRF is not used |
 | `HELIX_GOP=30` | Keyframe interval in frames |
-| `HELIX_JPEG=0` | Decode the JPEG frames in software (67 ms a frame instead of 11 ms on the Helix, a whole CPU while the render runs) |
 | `HELIX_PROGRESS=1` | Draw a progress bar along the bottom of the video |
 
 ### Checking a render by hand
@@ -72,3 +71,5 @@ k1os-helix-enc -v -o out.h264 /usr/data/k1os/timelapse/frames/*.jpg
 ```
 
 `-D -o out.nv12` writes the decoded frames instead, for inspection with `ffmpeg -f rawvideo -pix_fmt nv12 -s 1280x720 -i out.nv12 frame.png` on a computer.
+
+`k1os-helix-test` tries the codec itself: `k1os-helix-test decode frame.jpg - 100` decodes a picture a hundred times and prints the time and a checksum, `k1os-helix-test checks frame.jpg` asks the kernel's driver for everything it has to refuse. Neither disturbs a running stream; they only share the codec with it.
