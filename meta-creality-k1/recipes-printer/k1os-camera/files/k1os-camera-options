@@ -4,18 +4,20 @@
 # the files below applies to the next viewer without a restart.
 #
 #   /usr/data/k1os/camera.env   CAMERA_RESOLUTION=1280x720, CAMERA_FPS=8:
-#                               what the camera is asked for (MJPEG, snapshots)
+#                               what the camera is asked for (MJPEG, snapshots);
+#                               CAMERA_MJPEG_FPS=15: the most an MJPEG client
+#                               gets of it (0: every frame)
 #   /usr/data/k1os/twitch.env   the H.264 picture for WebRTC and Twitch alike:
 #                               TWITCH_BITRATE, TWITCH_FPS, TWITCH_OVERLAY,
 #                               TWITCH_GRAPH_CORNER
 TWITCH_BITRATE=; TWITCH_FPS=; TWITCH_OVERLAY=; TWITCH_GRAPH_CORNER=
 [ -r /usr/data/k1os/twitch.env ] && . /usr/data/k1os/twitch.env
 TWITCH_KEY=
-CAMERA_RESOLUTION=; CAMERA_FPS=
+CAMERA_RESOLUTION=; CAMERA_FPS=; CAMERA_MJPEG_FPS=
 [ -r /usr/data/k1os/camera.env ] && . /usr/data/k1os/camera.env
 dev=$(/usr/libexec/k1os/camera-device) || exit 1
 mkdir -p /run/k1os
-printf '%s\n' --camera-device "$dev" --camera-size "${CAMERA_RESOLUTION:-1280x720}" --camera-fps "${CAMERA_FPS:-8}"
+printf '%s\n' --camera-device "$dev" --camera-size "${CAMERA_RESOLUTION:-1280x720}" --camera-fps "${CAMERA_FPS:-8}" --camera-mjpeg-fps "${CAMERA_MJPEG_FPS:-15}"
 # k1os-stream's options; it reports its rate to the status file
 printf '%s\n' --fps "${TWITCH_FPS:-${CAMERA_FPS:-8}}" --bitrate "${TWITCH_BITRATE:-2500}" --status-file /run/k1os/stream-status.json
 case "${TWITCH_OVERLAY:-1}" in

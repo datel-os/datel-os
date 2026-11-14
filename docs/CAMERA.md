@@ -9,9 +9,10 @@ Defaults: 1280×720 at 8 fps, about 6 Mbit/s. 15 fps is about 12 Mbit/s and stut
 ```
 CAMERA_RESOLUTION=1280x720
 CAMERA_FPS=8
+CAMERA_MJPEG_FPS=15
 ```
 
-The setting applies the next time the camera is opened; `systemctl restart k1os-camera` applies it at once. Keep the frame rate in Mainsail's camera settings in step.
+`CAMERA_MJPEG_FPS` matters only when the camera runs faster than that: the MJPEG stream then gets every other frame or fewer, so that a camera at 30 fps for the WebRTC view does not put 24 Mbit/s of MJPEG on the Wi-Fi. The setting applies the next time the camera is opened; `systemctl restart k1os-camera` applies it at once. Keep the frame rate in Mainsail's camera settings in step.
 
 ### Cameras in Mainsail
 
