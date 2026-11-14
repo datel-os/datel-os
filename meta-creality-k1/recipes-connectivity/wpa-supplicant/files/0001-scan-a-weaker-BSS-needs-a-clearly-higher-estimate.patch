@@ -1,0 +1,55 @@
+From: Datel OS
+Subject: scan: a BSS heard far worse needs a clearly higher throughput estimate
+
+wpa_scan_result_compar() sorts the scan results that the choice of a BSS
+walks through. It caps both SNRs at GREAT_SNR (25 dB) and, when the capped
+values are less than 7 dB apart, lets the estimated throughput decide. A
+BSS at 19 dB therefore counts as close to one at 59 dB, and an estimate
+that is 2 % higher puts it first.
+
+Seen on a Creality K1 (BCM43430, 2.4 GHz, HT20) between two access points
+of one network: an 802.11g one at -30 dBm (estimate 54000) and an 802.11n
+one at -68 to -75 dBm (estimate 55250 at -70 dBm, 58500 at -69, 59800 at
+-68). Whenever the far one was heard at -70 dBm or better it was chosen,
+in 11 of 30 starts of wpa_supplicant. The link it gives is by far the
+worse one, and without a background scan nothing moves the station
+afterwards.
+
+Let the estimate of a BSS that is at least 7 dB weaker, by the SNRs as
+they are and not as capped, decide only if it is at least 20 % higher.
+That is the margin wpa_supplicant_need_to_roam_within_ess() uses when the
+current BSS has the better signal ("Skip roam - Current BSS has better
+signal level"). A BSS that promises clearly more still wins. The cases
+with a BSS in the 6 GHz band are left alone: there the comparison by
+estimate is wanted whatever the SNRs are.
+
+With the change the near access point stood first in the sorted results
+of each of 54 starts on that printer, with the far one in the results
+every time.
+
+Upstream-Status: Pending
+
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -2098,6 +2098,21 @@
+ 	if (snr_a && snr_b && (abs(snr_b - snr_a) < 7 ||
+ 			       is_6ghz_freq(wa->freq) ||
+ 			       is_6ghz_freq(wb->freq))) {
++		/* The SNRs compared above are capped at GREAT_SNR, so two BSSs
++		 * can count as close while one of them is heard far better.
++		 * The throughput estimate of the weaker one is the less
++		 * certain of the two: let it decide only if it is clearly
++		 * higher, by the margin that
++		 * wpa_supplicant_need_to_roam_within_ess() asks of a BSS with
++		 * a weaker signal. The 6 GHz cases are left as they are. */
++		if (!is_6ghz_freq(wa->freq) && !is_6ghz_freq(wb->freq)) {
++			if (snr_a_full - snr_b_full >= 7 &&
++			    wb->est_throughput < wa->est_throughput * 1.2)
++				return -1;
++			if (snr_b_full - snr_a_full >= 7 &&
++			    wa->est_throughput < wb->est_throughput * 1.2)
++				return 1;
++		}
+ 		if (wa->est_throughput != wb->est_throughput)
+ 			return (int) wb->est_throughput -
+ 				(int) wa->est_throughput;
