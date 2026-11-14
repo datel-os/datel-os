@@ -15,3 +15,8 @@ TUNE_FEATURES:tune-mips32r2el-fp64 = "${TUNE_FEATURES:tune-mips32r2el} fp64"
 MIPSPKGSFX_VARIANT:tune-mips32r2el-fp64 = "mips32r2el-fp64"
 # Only packages built with this tune are binary-compatible.
 PACKAGE_EXTRA_ARCHS:tune-mips32r2el-fp64 = "mips32r2el-fp64"
+
+# Target programs run at build time (python3's profile run) use qemu-user. Its
+# default CPU has neither 64-bit FPU registers nor the 2008 NaN encoding and
+# refuses these binaries; the P5600 model has both.
+QEMU_EXTRAOPTIONS_mips32r2el-fp64 = " -cpu P5600"
