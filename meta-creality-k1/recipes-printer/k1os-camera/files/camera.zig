@@ -65,6 +65,8 @@ pub const Settings = struct {
     width: u32 = 1280,
     height: u32 = 720,
     fps: u32 = 8,
+    /// the most frames a second an MJPEG client gets; 0: every frame
+    mjpeg_fps: u32 = 15,
 };
 
 /// Asked every time the camera is opened, so that a changed setting applies
@@ -142,7 +144,25 @@ const Stream = struct {
     /// what of the current part has not been sent yet
     pending: usize = 0,
     sent: usize = 0,
+    /// when the next frame is due, see `takesFrame`; 0: at once
+    due_ms: i64 = 0,
 };
+
+/// Milliseconds between two frames of an MJPEG client; 0: every frame. Set
+/// when the camera is opened, read by the camera thread only.
+var mjpeg_interval_ms: i64 = 0;
+
+/// Is a frame that arrives at `now` one for a client whose next frame is due
+/// at `due.*`? Moves `due.*` on when it is. A frame up to a quarter of the
+/// interval early counts, so that 15 frames a second out of the camera's 30
+/// are every second frame and not, with a little jitter, every third; a
+/// client that fell behind starts over from `now` and gets no burst.
+fn takesFrame(due: *i64, now: i64, interval: i64) bool {
+    if (interval <= 0) return true;
+    if (now + @divTrunc(interval, 4) < due.*) return false;
+    due.* = if (due.* == 0 or now - due.* > interval) now + interval else due.* + interval;
+    return true;
+}
 
 /// Guards `streams` and their buffers.
 var streams_mutex: Mutex = .{};
@@ -197,12 +217,15 @@ fn flush(s: *Stream, part: []const u8) void {
 
 /// Gives every client the new frame, except those that have not taken the
 /// previous one yet: a slow client sees fewer frames, never an old queue.
+/// With a limit on the MJPEG frame rate a client also skips the frames that
+/// come before its next one is due; the encoder still gets every frame.
 fn distribute(jpeg: []const u8) void {
     streams_mutex.lock();
     defer streams_mutex.unlock();
+    const now = nowMs();
     for (&streams, 0..) |*s, i| {
         if (s.fd < 0) continue;
-        if (s.pending == 0) {
+        if (s.pending == 0 and takesFrame(&s.due_ms, now, mjpeg_interval_ms)) {
             const head = std.fmt.bufPrint(&parts[i], "--" ++ boundary ++ "\r\nContent-Type: image/jpeg\r\nContent-Length: {d}\r\n\r\n", .{jpeg.len}) catch unreachable;
             if (head.len + jpeg.len + 2 <= part_bytes) {
                 @memcpy(parts[i][head.len..][0..jpeg.len], jpeg);
@@ -260,7 +283,8 @@ pub fn task(_: ?*anyopaque) callconv(.c) ?*anyopaque {
                 _ = usleep(2_000_000);
                 continue;
             }
-            _ = dprintf(2, "k1os-camera: camera %s open, %ux%u at %u fps\n", @as([*:0]const u8, &wanted.device), wanted.width, wanted.height, wanted.fps);
+            _ = dprintf(2, "k1os-camera: camera %s open, %ux%u at %u fps, MJPEG clients up to %u\n", @as([*:0]const u8, &wanted.device), wanted.width, wanted.height, wanted.fps, if (wanted.mjpeg_fps == 0 or wanted.mjpeg_fps > wanted.fps) wanted.fps else wanted.mjpeg_fps);
+            mjpeg_interval_ms = if (wanted.mjpeg_fps == 0 or wanted.mjpeg_fps >= wanted.fps) 0 else @divTrunc(1000, @as(i64, wanted.mjpeg_fps));
             camera = cam;
             is_open.store(true, .seq_cst);
             break :opened cam.?;
@@ -298,4 +322,29 @@ pub fn task(_: ?*anyopaque) callconv(.c) ?*anyopaque {
             distribute(frame[0..len]);
         } else flushAll();
     }
+}
+
+test "an MJPEG client limited to 15 frames takes every second of 30" {
+    var due: i64 = 0;
+    var taken: u32 = 0;
+    var i: i64 = 0;
+    // 30 frames a second with a few milliseconds of jitter
+    while (i < 300) : (i += 1) {
+        const jitter: i64 = @mod(i * 7, 5) - 2;
+        if (takesFrame(&due, 1000 + @divTrunc(i * 1000, 30) + jitter, 66)) taken += 1;
+    }
+    try std.testing.expect(taken >= 148 and taken <= 152);
+}
+
+test "no limit, a slow camera and a client that fell behind" {
+    var due: i64 = 0;
+    try std.testing.expect(takesFrame(&due, 5, 0));
+    try std.testing.expect(takesFrame(&due, 6, 0));
+    // 8 frames a second against a limit of 15: every frame
+    due = 0;
+    var t: i64 = 1000;
+    while (t < 3000) : (t += 125) try std.testing.expect(takesFrame(&due, t, 66));
+    // ten seconds without a frame taken: one frame, not a burst
+    try std.testing.expect(takesFrame(&due, 20_000, 66));
+    try std.testing.expect(!takesFrame(&due, 20_010, 66));
 }

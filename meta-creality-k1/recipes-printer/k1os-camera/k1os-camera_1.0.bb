@@ -39,6 +39,7 @@ do_compile() {
     export ZIG_LOCAL_CACHE_DIR=${WORKDIR}/zig-local-cache
     cd ${S}
     zig test main.zig -target ${BUILD_ARCH}-linux-musl -lc
+    zig test camera.zig -target ${BUILD_ARCH}-linux-musl -lc
     zig test h264-to-mp4.zig -target ${BUILD_ARCH}-linux-musl -lc
     MBEDTLS=${WORKDIR}/mbedtls-${MBEDTLS_PV} K1OS_STREAM=${S} sh ${S}/build.sh
 }

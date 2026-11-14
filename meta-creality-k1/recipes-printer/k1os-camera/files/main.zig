@@ -10,7 +10,7 @@
 //! pictures come from the encoder built in, k1os-stream (C, linked in): the
 //! status overlay and H.264 on the K1's hardware codec. The command prints
 //! options, one per line: k1os-stream's, and for the camera --camera-device,
-//! --camera-size WxH and --camera-fps.
+//! --camera-size WxH, --camera-fps and --camera-mjpeg-fps.
 //! Without it, the command itself writes raw H.264 (Annex B) to its stdout,
 //! which is how this program runs on machines without the codec.
 //! Either way the pictures are made only while anyone watches.
@@ -1043,6 +1043,8 @@ fn cameraSettings(out: *camera.Settings) bool {
             have_device = true;
         } else if (std.mem.eql(u8, name, "--camera-fps")) {
             out.fps = std.fmt.parseInt(u32, value, 10) catch return false;
+        } else if (std.mem.eql(u8, name, "--camera-mjpeg-fps")) {
+            out.mjpeg_fps = std.fmt.parseInt(u32, value, 10) catch return false;
         } else if (std.mem.eql(u8, name, "--camera-size")) {
             const x = std.mem.findScalar(u8, value, 'x') orelse return false;
             out.width = std.fmt.parseInt(u32, value[0..x], 10) catch return false;
