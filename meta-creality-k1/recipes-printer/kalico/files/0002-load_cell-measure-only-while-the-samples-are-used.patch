@@ -1,0 +1,325 @@
+From: Datel OS
+Subject: load_cell: measure only while the samples are used
+
+LoadCell subscribed to its sensor when Klipper became ready and never let
+go, only to keep the averaged force in the status current. On the K1 that
+is four HX711 at 80 samples per second, each sample converted and stored by
+Python around the clock: with the printer idle, Klipper used 13.8 % of a
+CPU, and more than half of that was this stream.
+
+Subscribe to the sensor while something uses the samples (a tare, a probe,
+a calibration, an API client of load_cell/dump_force) and for 5 s after, so
+that a tare followed by a move, or the probes of a bed mesh, do not restart
+it. A homing move has no client on the host, the probe on the MCU reads the
+samples itself: home_start() holds the sensor on until home_wait() is over.
+
+Starting the sensor before each use showed two things that the endless
+stream had hidden after its first seconds:
+
+- A stopped HX711 is powered down, and the bridge drifts while it warms up
+  again: 18 g in 10 s on the K1 bed, 11 g of it in the first second. The
+  samples of the first 2 s after a start are discarded and a collector
+  waits for them, so the first tare of a sequence takes 2 s longer.
+
+- FixedFreqReader started its clock regression when the measurements were
+  requested, before the chips had woken up and settled. That first point
+  was early, and the timestamps of the samples were late by 29 ms after the
+  start and by more than 2 ms for 9 s, until it had decayed. A tap is
+  located on the Z axis by those timestamps: at 3 mm/s, 29 ms are 0.09 mm,
+  and eight probes right after a start drifted by 0.13 mm. A reader of
+  such a chip now starts the regression at the first samples (4 ms after
+  the start, and falling).
+
+Probe repeatability on a K1, cold, eight samples each: standard deviation
+0.010, 0.011 and 0.013 mm with the sensor started 2 s before each run,
+0.014, 0.013 and 0.012 mm with the sensor running all the time.
+
+The force values in the status are present only while the sensor measures.
+Idle, Klipper now uses 3.3 % of a CPU.
+
+diff --git a/docs/Status_Reference.md b/docs/Status_Reference.md
+index a53a17c..400cfcf 100644
+--- a/docs/Status_Reference.md
++++ b/docs/Status_Reference.md
+@@ -393,6 +393,11 @@ The following information is available for each `[load_cell name]`:
+ - 'min_force_g': The minimum force in grams, over the last polling period.
+ - 'max_force_g': The maximum force in grams, over the last polling period.
+ 
++The four force values are present only while the sensor is measuring: during
++a tare, a probe, a homing move, a calibration or while an API client reads
++`load_cell/dump_force`, and for a few seconds after. Otherwise the sensor is
++stopped and they are absent; `LOAD_CELL_READ` takes a reading at any time.
++
+ ## load_cell_probe
+ 
+ The following information is available for `[load_cell_probe]`:
+diff --git a/klippy/extras/bulk_sensor.py b/klippy/extras/bulk_sensor.py
+index 22e6381..b1c3abe 100644
+--- a/klippy/extras/bulk_sensor.py
++++ b/klippy/extras/bulk_sensor.py
+@@ -255,6 +255,7 @@ class FixedFreqReader:
+         self.last_sequence = self.max_query_duration = 0
+         self._total_overflows = 0
+         self._batch_overflows = 0
++        self._needs_anchor = False
+         self.bulk_queue = self.oid = self.query_status_cmd = None
+ 
+     def setup_query_command(self, msgformat, oid, cq):
+@@ -276,7 +277,12 @@ class FixedFreqReader:
+     def _clear_duration_filter(self):
+         self.max_query_duration = 1 << 31
+ 
+-    def note_start(self):
++    # A chip that needs time before its first sample (it wakes up from
++    # power down, it settles) sets is_delayed: the clock regression then
++    # starts at the first samples instead of at this call. Started here, its
++    # first point is early by that delay and the timestamps are late by tens
++    # of milliseconds until that point has decayed, about 10 s later.
++    def note_start(self, is_delayed=False):
+         self.last_sequence = 0
+         self._total_overflows = 0
+         self._batch_overflows = 0
+@@ -286,6 +292,7 @@ class FixedFreqReader:
+         self._clear_duration_filter()
+         self._update_clock(is_reset=True)
+         self._clear_duration_filter()
++        self._needs_anchor = is_delayed
+ 
+     def note_end(self):
+         # Clear local queue (free no longer needed memory)
+@@ -321,18 +328,24 @@ class FixedFreqReader:
+         avg_mcu_clock = mcu_clock + duration // 2
+         if is_reset:
+             self.clock_sync.reset(avg_mcu_clock, chip_clock)
++        elif self._needs_anchor:
++            if msg_count:
++                self._needs_anchor = False
++                self.clock_sync.reset(avg_mcu_clock, chip_clock)
+         else:
+             self.clock_sync.update(avg_mcu_clock, chip_clock)
+ 
+     # Convert sensor_bulk_data responses into list of samples
+     def pull_samples(self) -> tuple[list, int]:
+         # Query MCU for sample timing and update clock synchronization
++        was_unanchored = self._needs_anchor
+         self._update_clock()
+         overflows = self._batch_overflows
+         self._batch_overflows = 0
+         # Pull sensor_bulk_data messages from local queue
+         raw_samples = self.bulk_queue.pull_queue()
+-        if not raw_samples:
++        if not raw_samples or was_unanchored:
++            # (one point is no regression: these samples cannot be timed)
+             return [], overflows
+         # Load variables to optimize inner loop below
+         last_sequence = self.last_sequence
+diff --git a/klippy/extras/load_cell/hx711s.py b/klippy/extras/load_cell/hx711s.py
+index f4a278b..5c231e5 100644
+--- a/klippy/extras/load_cell/hx711s.py
++++ b/klippy/extras/load_cell/hx711s.py
+@@ -174,8 +174,9 @@ class HX711SBase(LoadCellSensor):
+         logging.info(
+             "%s starting '%s' measurements", self.sensor_type, self.name
+         )
+-        # Initialize clock tracking
+-        self.ffreader.note_start()
++        # Initialize clock tracking. The chips wake up from power down and
++        # the MCU drops their first conversions
++        self.ffreader.note_start(is_delayed=True)
+ 
+     def _finish_measurements(self):
+         # don't use serial connection after shutdown
+diff --git a/klippy/extras/load_cell/load_cell.py b/klippy/extras/load_cell/load_cell.py
+index 0e2c2f4..047e4a4 100644
+--- a/klippy/extras/load_cell/load_cell.py
++++ b/klippy/extras/load_cell/load_cell.py
+@@ -63,8 +63,9 @@ class SampleStructure(Enum):
+ 
+ # Helper for event driven webhooks and subscription based API clients
+ class ApiClientHelper(object):
+-    def __init__(self, printer):
++    def __init__(self, printer, start_cb=None):
+         self.printer = printer
++        self.start_cb = start_cb
+         self.client_cbs = []
+         self.webhooks_start_resp = {}
+ 
+@@ -79,6 +80,8 @@ class ApiClientHelper(object):
+     # Add a client that gets data callbacks
+     def add_client(self, client_cb):
+         self.client_cbs.append(client_cb)
++        if self.start_cb is not None:
++            self.start_cb()
+ 
+     # Add Webhooks client and send header
+     def _add_webhooks_client(self, web_request):
+@@ -510,7 +513,9 @@ class LoadCellSampleCollector:
+         if len(self._samples) >= min_count:
+             return self._finish_collecting()
+         print_time = self._mcu.estimated_print_time(self._reactor.monotonic())
+-        start_time = max(print_time, self.min_time)
++        # a sensor that was just started delivers nothing while it warms up
++        warmup_end_time = self._load_cell.get_warmup_end_time()
++        start_time = max(print_time, self.min_time, warmup_end_time)
+         sps = self._load_cell.sensor.get_samples_per_second()
+         return self._collect_until(start_time + 1.0 + (min_count / sps))
+ 
+@@ -524,6 +529,14 @@ class LoadCellSampleCollector:
+ 
+ # Printer class that controls the load cell
+ MIN_COUNTS_PER_GRAM = 1.0
++# The sensor measures only while something uses its samples, and for this
++# many seconds after: a probe is a tare followed by a move and a bed mesh is
++# many probes, so the gaps between them must not stop and restart the sensor
++STREAM_LINGER_TIME = 5.0
++# A stopped sensor is powered down. The reading of a bridge drifts while it
++# warms up again (18 g in 10 s on a Creality K1 bed, most of it in the first
++# second), so the samples of this many seconds after a start are discarded
++STREAM_WARMUP_TIME = 2.0
+ 
+ 
+ @dataclass
+@@ -645,18 +658,25 @@ class LoadCell:
+             default="normal",
+         )
+         LoadCellCommandHelper(config, self)
++        # The sensor measures on demand, see STREAM_LINGER_TIME
++        self._is_ready = False
++        self._is_streaming = False
++        self._stream_hold = False
++        self._idle_since = None
++        self._warmup_end_time = 0.0
+         # Client support:
+-        self.clients = ApiClientHelper(printer)
++        self.clients = ApiClientHelper(printer, self._start_streaming)
+         header = {"header": SampleStructure.header_labels(self.channel_count)}
+         self.clients.add_mux_endpoint(
+             "load_cell/dump_force", "load_cell", self.name, header
+         )
+-        # startup, when klippy is ready, start capturing data
+         printer.register_event_handler("klippy:ready", self._handle_ready)
+ 
+     def _handle_do_ready(self, eventtime):
+-        self.sensor.add_client(self._sensor_data_event)
+-        self.add_client(self._track_force)
++        # the sensor can be started from here on
++        self._is_ready = True
++        if self.clients.client_cbs or self._stream_hold:
++            self._start_streaming()
+         # announce calibration status on ready
+         if self.is_calibrated():
+             self.printer.send_event("load_cell:calibrate", self)
+@@ -666,6 +686,43 @@ class LoadCell:
+     def _handle_ready(self):
+         self.printer.get_reactor().register_callback(self._handle_do_ready)
+ 
++    # subscribe to the sensor, which starts its measurements
++    def _start_streaming(self):
++        if self._is_streaming or not self._is_ready:
++            return
++        self._is_streaming = True
++        reactor = self.printer.get_reactor()
++        print_time = self.sensor.get_mcu().estimated_print_time(
++            reactor.monotonic()
++        )
++        self._warmup_end_time = print_time + STREAM_WARMUP_TIME
++        try:
++            self.sensor.add_client(self._sensor_data_event)
++        except Exception:
++            self._is_streaming = False
++            raise
++
++    # True while the samples are in use or were until a moment ago
++    def _is_stream_needed(self):
++        if self.clients.client_cbs or self._stream_hold:
++            self._idle_since = None
++            return True
++        now = self.printer.get_reactor().monotonic()
++        if self._idle_since is None:
++            self._idle_since = now
++        return now < self._idle_since + STREAM_LINGER_TIME
++
++    # print time from which the samples of the running sensor are delivered
++    def get_warmup_end_time(self):
++        return self._warmup_end_time
++
++    # Keep the sensor measuring although no client on the host reads it: the
++    # probe on the MCU takes the samples directly during a homing move
++    def hold_stream(self, is_held: bool):
++        self._stream_hold = is_held
++        if is_held:
++            self._start_streaming()
++
+     # convert raw counts to grams and broadcast to clients
+     def _sensor_data_event(self, msg):
+         data = msg.get("data")
+@@ -673,6 +730,8 @@ class LoadCell:
+         overflows = msg.get("overflows")
+         if data is None:
+             return None
++        if data and data[0][0] < self._warmup_end_time:
++            data = [row for row in data if row[0] >= self._warmup_end_time]
+         samples = []
+         for row in data:
+             channel_counts = row[1:][::2]
+@@ -698,8 +757,18 @@ class LoadCell:
+                 sample.append(counts)
+             samples.append(sample)
+         msg = {"data": samples, "errors": errors, "overflows": overflows}
++        self._track_force(msg)
+         self.clients.send(msg)
+-        return True
++        if self._is_stream_needed():
++            return True
++        # Unsubscribe, which stops the sensor. The force in the status would
++        # go stale, so it is dropped until the next measurement
++        self._is_streaming = False
++        self._idle_since = None
++        self._force_buffer.clear()
++        for buf in self._channel_force_buffers:
++            buf.clear()
++        return False
+ 
+     # get internal events of force data
+     def add_client(self, callback):
+@@ -834,7 +903,7 @@ class LoadCell:
+                         "Some samples are saturated (+/-100%)"
+                     )
+ 
+-    # Provide ongoing force tracking/averaging for status updates
++    # Provide force tracking/averaging for status updates while measuring
+     def _track_force(self, msg):
+         if not (self.is_calibrated() and self.is_tared()):
+             return True
+diff --git a/klippy/extras/load_cell/load_cell_probe.py b/klippy/extras/load_cell/load_cell_probe.py
+index 2d9b69c..ddb47d5 100644
+--- a/klippy/extras/load_cell/load_cell_probe.py
++++ b/klippy/extras/load_cell/load_cell_probe.py
+@@ -739,12 +739,24 @@ class LoadCellPrimitives:
+     def home_start(self, print_time):
+         # do not permit homing if the load cell is not calibrated
+         self._load_cell.assert_calibrated()
+-        # start trsync
+-        trigger_completion = self._dispatch.start(print_time)
+-        self._mcu_load_cell_probe.home_start(print_time)
++        # the probe on the MCU needs samples until home_wait() is over
++        self._load_cell.hold_stream(True)
++        try:
++            # start trsync
++            trigger_completion = self._dispatch.start(print_time)
++            self._mcu_load_cell_probe.home_start(print_time)
++        except Exception:
++            self._load_cell.hold_stream(False)
++            raise
+         return trigger_completion
+ 
+     def home_wait(self, home_end_time):
++        try:
++            return self._home_wait(home_end_time)
++        finally:
++            self._load_cell.hold_stream(False)
++
++    def _home_wait(self, home_end_time):
+         self._dispatch.wait_end(home_end_time)
+         # trigger has happened, now to find out why...
+         res = self._dispatch.stop()
