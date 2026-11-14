@@ -8,7 +8,7 @@ Development happens in the private repository `zales/k1-yocto`; the public repos
 
 | File | Contents | Where it goes |
 |---|---|---|
-| `datel-os-vX.Y.Z-xImage` | Linux 6.6-rt kernel in the Ingenic `xImage` format | mmcblk0p5 / p6 |
+| `datel-os-vX.Y.Z-xImage` | Linux 6.18 kernel as an `xImage` (a U-Boot image of a kernel that unpacks itself) | mmcblk0p5 / p6 |
 | `datel-os-vX.Y.Z-rootfs.squashfs` | the system with Kalico and its own MCU firmware | mmcblk0p7 / p8 |
 | `datel-os-vX.Y.Z.ota.img` | the same packed as a package for the Creality updater (7z, AES); the version inside is `9.X.Y.Z` | the inactive slot |
 | `SHA256SUMS` | checksums of all files | |

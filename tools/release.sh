@@ -147,7 +147,7 @@ notes() {
     echo
     echo "| File | Contents |"
     echo "|---|---|"
-    echo "| \`$KERNEL_NAME\` | Linux 6.6-rt kernel, \`xImage\` for mmcblk0p5/p6 |"
+    echo "| \`$KERNEL_NAME\` | Linux 6.18 kernel, \`xImage\` for mmcblk0p5/p6 |"
     echo "| \`$ROOTFS_NAME\` | the system with Kalico and its own MCU firmware (reflashes all three MCUs on a cold start), squashfs for mmcblk0p7/p8 |"
     echo "| \`$OTA_RELEASE_NAME\` | the same as a package for the Creality updater; rename to \`$OTA_NAME\` before use |"
     echo "| \`SHA256SUMS\` | checksums of all files |"

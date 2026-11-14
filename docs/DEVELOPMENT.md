@@ -21,7 +21,7 @@ The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/imag
 | `conf/machine/creality-k1.conf`, `conf/machine/include/` | Machine: MIPS32r2 with the `mips32r2el-fp64` tune, kernel, image types |
 | `conf/distro/k1os.conf` | Distro `k1os`, `DISTRO_VERSION` (must match a release tag) |
 | `classes/` | The `creality-ota` image type |
-| `recipes-kernel/linux/` | NebulaOS kernel recipe, `creality_k1.dts`, config fragment `k1.cfg`, patches |
+| `recipes-kernel/linux/` | The kernel recipe: [zales/k1-linux](https://github.com/zales/k1-linux) at a pinned commit of `main`. The device tree, the configuration (`k1_defconfig`) and the Helix driver are in that tree; the layer adds no patch |
 | `recipes-core/k1os-base/` | Datel OS services: data directory setup, trial boot and slot confirmation, Wi-Fi MAC, camera and printer-name seeding, `k1os-slot` |
 | `recipes-core/images/k1-image.bb` | The image |
 | `recipes-core/datel-branding/` | Hostname, MOTD, prompt, Mainsail logo |
@@ -34,8 +34,9 @@ The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/imag
 
 ## What it is built on
 
-- **Kernel:** Ingenic X2000 SDK, Linux 6.6.157 with PREEMPT_RT, from [NebulaOS-KE/NebulaOS-kernel](https://github.com/NebulaOS-KE/NebulaOS-kernel), branch `openke`, commit d86790d (the one NebulaOS-firmware 1.0 pins). NebulaOS runs an open firmware for the Ender-3 V3 KE on it, which has the same chip and mostly the same wiring. The configuration differs from NebulaOS only where the K1 needs it: the K1 device tree, Goodix touch, Bluetooth, XZ squashfs, brcmfmac as a module with its firmware in the rootfs, and the Helix video codec.
-- **Device tree:** `creality_k1.dts` includes the KE board file and changes what differs on the K1: console, MCU UARTs, touch, display, Wi-Fi and Bluetooth pins, the codec's DMA pool. Every value names the stock file it comes from (`hardware/`).
+- **Kernel:** Linux 6.18.63, kernel.org's stable kernel plus the K1's support, from [zales/k1-linux](https://github.com/zales/k1-linux) at the commit of `main` that `linux-x2000_6.18.bb` pins. That repository's README says how it is put together: the X2000 platform and its drivers are carried over from Ingenic's SDK kernel 6.6 (the tree NebulaOS keeps for the Ender-3 V3 KE), everything reaches `main` through pull requests, and each of those says what it was checked with on a printer. The kernel is preemptible (`CONFIG_PREEMPT`), not PREEMPT_RT, which mainline does not offer for MIPS. Releases up to 0.5.1 shipped the SDK kernel 6.6.157 with PREEMPT_RT.
+- **Configuration:** the tree's `k1_defconfig`, taken as it is. The recipe adds only the wireless regulatory database as built-in firmware and stops the build if an option the image depends on is missing. `uname -r` is `6.18.63`, and the modules (brcmfmac and the USB network adapters) come from the same build.
+- **Device tree:** `arch/mips/boot/dts/ingenic/creality-k1.dts` of that tree, built into the kernel: console, MCU UARTs, eMMC, Wi-Fi, USB, the codec's 32 MiB of memory, the area for the kernel log kept over a restart. `hardware/` here holds the stock files its values come from.
 - **System:** Yocto scarthgap (poky, meta-oe, meta-python, meta-networking, meta-webserver, meta-arm for the MCU toolchain), systemd, read-only root.
 - **Update package:** the image type `creality-ota` produces an `.img` that the stock updater and a future own updater install. It holds the kernel and the system squashfs and goes into the inactive set of partitions.
 
