@@ -38,3 +38,5 @@ md5 -q ~/k1-usbboot/ota.out; dd if=~/Documents/K1-zaloha-2026-11-05/mmcblk0-sect
 7. Press RESET. The printer starts stock normally.
 
 A match means USB rescue works on this S12 board. A broken slot 2 can then be undone with `sudo ./usbboot --uboot && sudo ./usbboot --swap-ota`.
+
+Used for real on 14 November 2026: the first Linux 6.18 kernel stopped before the first service on every start, and the marker swap from mask-ROM mode brought the reference printer back to the other slot.

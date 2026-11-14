@@ -85,7 +85,7 @@ followed by `--switch` and a reboot. `SLOT=` names the target; the script refuse
 
 ## Recovery
 
-If the printer no longer boots from either slot, the Ingenic mask-ROM USB boot loads a bootloader over the mainboard's micro USB port and can swap the marker (`usbboot --swap-ota`) or read and write partitions. Tool and procedure: [tools/usbboot/README.md](../tools/usbboot/README.md). The procedure is written for the K1 but not yet verified on the S12 board.
+If the printer no longer boots from either slot, the Ingenic mask-ROM USB boot loads a bootloader over the mainboard's micro USB port and can swap the marker (`usbboot --swap-ota`) or read and write partitions. Tool and procedure: [tools/usbboot/README.md](../tools/usbboot/README.md). It was needed once on the S12 board, on 14 November 2026: the marker swap brought the printer back from a kernel that stopped before the first service.
 
 ## The `.ota.img` package
 

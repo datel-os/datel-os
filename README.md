@@ -4,7 +4,7 @@
 
 Open firmware for the Creality K1, built from source with Yocto: Linux 6.18, Kalico with open firmware for all three MCUs, Moonraker, Mainsail, camera streaming, hardware-encoded timelapse and Twitch live streaming. The stock bootloader stays in place and the second eMMC slot always holds a way back.
 
-**Pre-release for developers.** It runs on the author's K1 in both A/B slots. The display does not work yet, recovery from a kernel that fails to boot needs a USB cable, and everything is verified on one printer. Since version 0.5.0 the CPU runs at 816 MHz to stop wrong floating point results; the first prints with that kernel, 97 and 31 minutes, ran without a step error. Read [Limitations](#limitations) before installing.
+**Pre-release for developers.** It runs on the author's K1 in both A/B slots. The display does not work yet, recovery from a kernel that fails to boot needs a USB cable, and everything is verified on one printer. Version 0.6.0 replaces Ingenic's SDK kernel 6.6 with kernel.org's Linux 6.18 and the K1's support from [zales/k1-linux](https://github.com/zales/k1-linux); two prints ran on that kernel before the release, 68 and 78 minutes, the second on a build of this release, without a Klipper error and without a byte sent again on the links to the three microcontrollers. Since version 0.5.0 the CPU runs at 816 MHz to stop wrong floating point results. Read [Limitations](#limitations) before installing.
 
 ## What works
 
@@ -27,7 +27,7 @@ Open firmware for the Creality K1, built from source with Yocto: Linux 6.18, Kal
 Ordered by how much it hurts.
 
 1. **No display.** Datel OS has no panel driver. Control the printer through Mainsail, OrcaSlicer or SSH.
-2. **No automatic fallback from a kernel that does not boot.** The stock SPL has no boot counter. The trial boot protects from the first systemd service on; a kernel that hangs before that needs the USB mask-ROM boot ([tools/usbboot/README.md](tools/usbboot/README.md)), not yet verified on the S12 board.
+2. **No automatic fallback from a kernel that does not boot.** The stock SPL has no boot counter. The trial boot protects from the first systemd service on; a kernel that hangs before that needs the USB mask-ROM boot ([tools/usbboot/README.md](tools/usbboot/README.md)). That way back was needed once on the S12 board, on 14 November 2026 with the first Linux 6.18 kernel, and it worked.
 3. **Installation needs root over SSH on stock.** Creality publishes the stock root password in its rooting guide. Datel OS keeps the same root password, so it opens both slots.
 4. **MCU firmware changes only on a cold start.** When moving between stock and Datel OS, power the printer off and on.
 5. **Verified on one printer:** board CR4CU220812S11, panel `lcm_id=3`.
