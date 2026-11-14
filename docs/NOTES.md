@@ -111,6 +111,18 @@ Stock Creality recorded its timelapse with the X2000's Helix block: its Klipper 
 - Twenty renders of the same frames gave the same H.264 file each time, no failed frame. The decoded pictures differ from libjpeg-turbo's by 0.5 on average and 3 at most (of 255).
 - The Helix decoder is now the default. When it cannot be set up or refuses a frame, the run goes on in software; `HELIX_JPEG=0` asks for software from the start. A JPEG cut off after 20 kB is not refused: the Helix returns a picture for it without an error.
 
+## 13 November 2026: the Helix without the vendor's driver
+
+A kernel without PREEMPT_RT (6.6.162) stopped without a message within two seconds of the first WebRTC viewer, three times out of three, and the watchdog reset it. The same kernel ran the camera alone and the codec alone.
+
+- The kernel log sent to the syslog server showed three warnings right before the stop, all from `jpeg_decoder_decode()` in the vendor's driver: a picture whose data came out zero bytes long. Its JPEG header parser checks no length. With a header that runs past the end of the frame the length of the data becomes negative, and the `memcpy` that follows runs across kernel memory, which fits a stop without a message. The freeze of 8 November was most likely the same.
+- The camera itself delivers whole frames on that kernel (180 from a stream, four stream starts of 60 frames). What reached the decoder was a short frame from the path through k1os-stream; where it came from was not found.
+- The driver was replaced, not patched: the kernel keeps only the codec's power, interrupt and memory (`k1os-helix.c`, `/dev/helix`), and the parser, the H.264 headers and the codec's jobs are Zig in `k1os-helix`. Reference data came from the vendor's C compiled on a computer: 400 encoder configurations agree word for word, and on the printer 60 pictures came out bit for bit as from the vendor's driver.
+- The vendor's driver maps its buffers uncached. A copy of 128 kB into such memory takes 3.8 ms on this SoC, into cached memory 0.17 ms. `/dev/helix` maps cached and does the cache work for the ranges a job names. A test that writes on one CPU and starts the job on the other, and the reverse for what the codec wrote, found no stale byte in 100 rounds each way.
+- The codec's power gate takes 742 µs to open and the clock framework waits for it with interrupts off. The vendor's driver switched the power for every job: sixty times a second under a stream. With the power kept for half a second after a job, the kernel's CPU time per job fell from 0.79 ms to 0.06 ms.
+- Through the new driver a 1280×720 decode takes 6.8 ms and an encode 8.9 ms. The camera daemon with one WebRTC viewer at 30 fps uses 7 % of a core without the overlay and 20 % with the graph panels; the panels are the rest, composed on the CPU byte by byte.
+- The software JPEG decoder (libjpeg-turbo) left the timelapse: it was there because the hardware decoder was not trusted. A damaged frame is now refused by the parser and left out.
+
 ## Phases
 
 0. **Rescue:** eMMC backup and USB mask-ROM boot. Backup done; USB boot described, not verified on S12.

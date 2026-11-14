@@ -1,10 +1,11 @@
 /* k1os-stream: MJPEG camera frames -> Helix JPEG decoder -> status overlay
- * -> Helix H.264 encoder -> raw Annex B H.264 on stdout, at a steady frame
- * rate and with a userspace rate controller on the encoder's QP controls.
+ * -> Helix H.264 encoder -> raw Annex B H.264, at a steady frame rate and
+ * with a rate controller that picks each picture's quantiser.
  *
- * Frames come either from a JPEG stream on stdin (ustreamer-dump reading
- * uStreamer's memory sink, so the camera stays shared with Mainsail) or
- * straight from a V4L2 MJPEG capture device.
+ * It is a part of k1os-camera, which hands it the camera's frames and takes
+ * the pictures (k1os-stream.h). Frames can also come from a JPEG stream on a
+ * descriptor or straight from a V4L2 MJPEG capture device. The codec is run
+ * by helix_codec.h, which is Zig.
  *
  * MIT License, part of Datel OS. */
 #define _GNU_SOURCE
@@ -25,16 +26,13 @@
 #include <linux/videodev2.h>
 
 #include "graph.h"
-#include "helix.h"
+#include "helix_codec.h"
 #include "k1os-stream.h"
-#include "jpeg_dht.h"
 #include "moonraker.h"
 #include "overlay.h"
 #include "sysstat.h"
 
-#define NBUFS 2
 #define CAM_BUFS 3
-#define CODEC_TIMEOUT_MS 3000
 
 static volatile sig_atomic_t stop_now, key_wanted;
 
@@ -47,14 +45,6 @@ void k1os_stream_key_picture(void)
 {
 	key_wanted = 1;
 }
-
-#ifndef K1OS_STREAM_LIBRARY
-static void on_signal(int sig)
-{
-	(void)sig;
-	stop_now = 1;
-}
-#endif
 
 static int64_t now_ns(void)
 {
@@ -99,27 +89,6 @@ static int jpeg_size(const uint8_t *d, size_t len, unsigned *w, unsigned *h)
 		i += 2 + l;
 	}
 	return -1;
-}
-
-/* 1 if the frame carries a DHT segment before the scan. */
-static int jpeg_has_dht(const uint8_t *d, size_t len)
-{
-	size_t i = 2;
-	while (i + 4 <= len && d[i] == 0xFF) {
-		unsigned m = d[i + 1];
-		if (m == 0xFF) {
-			i++;
-			continue;
-		}
-		if (m == 0xC4) {
-			return 1;
-		}
-		if (m == 0xDA) {
-			return 0;
-		}
-		i += 2 + ((d[i + 2] << 8) | d[i + 3]);
-	}
-	return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -438,105 +407,6 @@ static int src_take(struct jpeg_src *s, const uint8_t **data, size_t *len)
 }
 
 /* ------------------------------------------------------------------ */
-/* Output                                                              */
-
-#ifndef K1OS_STREAM_LIBRARY
-static int write_all(int fd, const struct iovec *iov_in, int n)
-{
-	struct iovec iov[4];
-	int i;
-	memcpy(iov, iov_in, n * sizeof *iov);
-	while (n > 0) {
-		ssize_t w = writev(fd, iov, n);
-		if (w < 0) {
-			if (errno == EINTR) {
-				continue;
-			}
-			if (errno == EAGAIN) {
-				struct pollfd p = { fd, POLLOUT, 0 };
-				poll(&p, 1, 1000);
-				continue;
-			}
-			return -1;
-		}
-		for (i = 0; i < n && w > 0; ) {
-			if ((size_t)w >= iov[i].iov_len) {
-				w -= iov[i].iov_len;
-				i++;
-			} else {
-				iov[i].iov_base = (char *)iov[i].iov_base + w;
-				iov[i].iov_len -= w;
-				w = 0;
-			}
-		}
-		if (i > 0) {
-			memmove(iov, iov + i, (n - i) * sizeof *iov);
-			n -= i;
-		}
-	}
-	return 0;
-}
-#endif
-
-/* The driver pads SPS/PPS in front of an IDR slice to 256 bytes with a
- * filler NAL (type 12); drop it, it is only noise for the muxer. */
-static int split_out_filler(uint8_t *buf, size_t len, struct iovec *iov)
-{
-	size_t lim = len < 1024 ? len : 1024;
-	size_t i, filler_start = 0, filler_end = 0;
-	int in_filler = 0;
-
-	for (i = 0; i + 3 < lim; i++) {
-		if (buf[i] == 0 && buf[i + 1] == 0 && buf[i + 2] == 1) {
-			size_t start = (i > 0 && buf[i - 1] == 0) ? i - 1 : i;
-			unsigned type = buf[i + 3] & 0x1f;
-			if (in_filler) {
-				filler_end = start;
-				break;
-			}
-			if (type == 12) {
-				in_filler = 1;
-				filler_start = start;
-			} else if (type == 1 || type == 5) {
-				break;
-			}
-			i += 3;
-		}
-	}
-	if (in_filler && filler_end > filler_start) {
-		iov[0].iov_base = buf;
-		iov[0].iov_len = filler_start;
-		iov[1].iov_base = buf + filler_end;
-		iov[1].iov_len = len - filler_end;
-		return 2;
-	}
-	iov[0].iov_base = buf;
-	iov[0].iov_len = len;
-	return 1;
-}
-
-/* ------------------------------------------------------------------ */
-
-static int find_helix(char *path, size_t size)
-{
-	unsigned i;
-	for (i = 0; i < 16; i++) {
-		char p[64], name[64];
-		FILE *f;
-		snprintf(p, sizeof p, "/sys/class/video4linux/video%u/name", i);
-		f = fopen(p, "r");
-		if (!f) {
-			continue;
-		}
-		if (fgets(name, sizeof name, f) && strncmp(name, "helix-venc", 10) == 0) {
-			fclose(f);
-			snprintf(path, size, "/dev/video%u", i);
-			return 0;
-		}
-		fclose(f);
-	}
-	return -1;
-}
 
 static const char *state_word(const char *s)
 {
@@ -620,8 +490,8 @@ static void write_status(const char *path, time_t started, unsigned width, unsig
 static void usage(void)
 {
 	fprintf(stderr,
-	        "k1os-stream [options] > out.h264\n"
-	        "  --camera -            JPEG frames from stdin (default; e.g. ustreamer-dump --output -)\n"
+	        "k1os-stream's options:\n"
+	        "  --camera -            JPEG frames from the caller (default)\n"
 	        "  --camera /dev/videoN  MJPEG capture straight from the camera\n"
 	        "  --size WxH            capture size for --camera /dev/videoN (1280x720)\n"
 	        "  --fps N               output frame rate (10); frames repeat when the camera is slower\n"
@@ -634,7 +504,6 @@ static void usage(void)
 	        "                        and the statistics panel (chamber, board, speed, flow, Z,\n"
 	        "                        fan, CPU, RAM, Wi-Fi, bitrate) next to it\n"
 	        "  --moonraker HOST:PORT (127.0.0.1:7125)\n"
-	        "  --device /dev/videoN  the Helix codec (found by its name helix-venc)\n"
 	        "  --stats SECONDS       print statistics on stderr every N s (5, 0 = off)\n"
 	        "  --status-file PATH    also write the statistics there as JSON (for Moonraker)\n"
 	        "  --frames N            stop after N frames\n");
@@ -646,12 +515,11 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 		{"camera", 1, 0, 'c'}, {"size", 1, 0, 's'}, {"fps", 1, 0, 'f'}, {"bitrate", 1, 0, 'b'},
 		{"qp", 1, 0, 'q'}, {"qp-min", 1, 0, 'Q'}, {"qp-max", 1, 0, 'X'}, {"gop", 1, 0, 'g'},
 		{"font", 1, 0, 'F'}, {"no-overlay", 0, 0, 'n'}, {"graph", 1, 0, 'G'}, {"moonraker", 1, 0, 'm'},
-		{"device", 1, 0, 'd'}, {"stats", 1, 0, 'S'}, {"status-file", 1, 0, 'T'},
+		{"stats", 1, 0, 'S'}, {"status-file", 1, 0, 'T'},
 		{"frames", 1, 0, 'N'}, {"help", 0, 0, 'h'}, {0, 0, 0, 0}
 	};
 	const char *camera = "-", *status_file = NULL;
 	time_t started = time(NULL);
-	char device[32] = "";
 	char mr_host[64] = "127.0.0.1";
 	int mr_port = 7125;
 	unsigned cam_w = 1280, cam_h = 720, width = 0, height = 0;
@@ -662,7 +530,7 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 	enum graph_corner corner = GRAPH_TR;
 	unsigned long max_frames = 0;
 	struct jpeg_src src;
-	struct helix_m2m dec, enc;
+	struct helix_codec *codec = NULL;
 	struct overlay ov;
 	struct graph *gr = NULL, *sp = NULL;   /* graph panel, statistics panel */
 	struct sys_stats sys;
@@ -670,13 +538,13 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 	static struct temp_history hist;
 	struct printer_state pstate;
 	int64_t period, next_tick, last_lines = 0, last_stats;
-	unsigned last_nv12 = 0, have_frame = 0, dec_out = 0, enc_out = 0, enc_cap = 0;
-	unsigned long frames = 0, repeats = 0, decoded = 0;
+	unsigned have_frame = 0, misses = 0;
+	unsigned long frames = 0, repeats = 0, decoded = 0, skipped = 0;
 	uint64_t dec_ns = 0, enc_ns = 0;
 	uint64_t ring_sum = 0, bits_total = 0, bits_stats = 0;
 	unsigned ring_n, ring_i = 0, ring_fill = 0;
 	unsigned long frames_stats = 0;
-	int c, no_dht_warned = 0, eof = 0, rc = 1, moonraker_on = 0;
+	int c, eof = 0, rc = 1, moonraker_on = 0;
 	uint64_t *ring = NULL;
 
 	stop_now = 0;
@@ -684,7 +552,6 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 	optind = 0;     /* getopt starts over: this may not be the first run */
 	memset(&src, 0, sizeof src);
 	src.fd = -1;
-	dec.fd = enc.fd = -1;
 
 	while ((c = getopt_long(argc, argv, "h", opts, NULL)) != -1) {
 		switch (c) {
@@ -717,7 +584,6 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 			}
 			break;
 		}
-		case 'd': snprintf(device, sizeof device, "%s", optarg); break;
 		case 'S': stats_s = atoi(optarg); break;
 		case 'T': status_file = optarg; break;
 		case 'N': max_frames = strtoul(optarg, NULL, 10); break;
@@ -733,10 +599,6 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 	gop_frames = fps * gop_s;
 	if (gop_frames > 120) {
 		gop_frames = 120;
-	}
-	if (!device[0] && find_helix(device, sizeof device) < 0) {
-		fprintf(stderr, "no helix-venc device; is the Helix codec in the kernel?\n");
-		return 1;
 	}
 
 	if (hooks->frame) {
@@ -795,40 +657,25 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 		fprintf(stderr, "camera frames are %ux%u; the Helix needs multiples of 16\n", width, height);
 		goto out;
 	}
-	fprintf(stderr, "k1os-stream: %ux%u, %u fps, %u kbit/s, GOP %u frames, codec %s\n",
-	        width, height, fps, bitrate_kbit, gop_frames, device);
+	fprintf(stderr, "k1os-stream: %ux%u, %u fps, %u kbit/s, GOP %u frames\n",
+	        width, height, fps, bitrate_kbit, gop_frames);
 
-	if (helix_open(&dec, device, "jpeg-decoder", V4L2_PIX_FMT_JPEG, V4L2_PIX_FMT_NV12,
-	               width, height, NBUFS, 0) < 0) {
+	codec = helix_codec_open(width, height, fps > 30 ? 40 : 31, qp_min, qp_max);
+	if (!codec) {
 		goto out;
 	}
-	if (helix_open(&enc, device, "h264-encoder", V4L2_PIX_FMT_NV12, V4L2_PIX_FMT_H264,
-	               width, height, NBUFS, 1) < 0) {
-		goto out;
-	}
-	helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_H264_PROFILE, V4L2_MPEG_VIDEO_H264_PROFILE_MAIN);
-	helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_H264_LEVEL,
-	               fps > 30 ? V4L2_MPEG_VIDEO_H264_LEVEL_4_0 : V4L2_MPEG_VIDEO_H264_LEVEL_3_1);
-	helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_HEADER_MODE, V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME);
-	helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_GOP_SIZE, gop_frames);
-	helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_BITRATE, bitrate_kbit * 1000 > 4000000 ? 4000000 : (int)(bitrate_kbit * 1000));
-	helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_H264_MIN_QP, qp_min);
-	helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_H264_MAX_QP, qp_max);
-	helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP, qp > qp_min + 2 ? qp - 2 : qp_min);
-	helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP, qp);
-	if (helix_probe_dmabuf(&enc, &dec) < 0) {
-		goto out;
-	}
-	if (helix_stream_on(&dec) < 0 || helix_stream_on(&enc) < 0) {
-		goto out;
-	}
-	fprintf(stderr, "k1os-stream: frames pass from the decoder to the encoder %s\n",
-	        enc.out_dmabuf ? "as DMABUFs" : "by copy");
 
 	overlay_init(&ov, width, height, font_large);
 	memset(&pstate, 0, sizeof pstate);
-	if (graph_on) {
+	/* The codec has to know every row that is drawn into: the bar here, the
+	 * panels below. */
+	if (overlay_on) {
 		overlay_lines(&ov, &pstate);    /* sets the line count, for the bar height */
+		if (overlay_bar_height(&ov) <= height) {
+			helix_codec_draws(codec, height - overlay_bar_height(&ov), height);
+		}
+	}
+	if (graph_on) {
 		gr = calloc(1, sizeof *gr);
 		if (!gr || graph_init(gr, width, height, overlay_bar_height(&ov), corner) < 0) {
 			fprintf(stderr, "k1os-stream: no room for the graph panel in %ux%u, left out\n", width, height);
@@ -843,6 +690,12 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 				free(sp);
 				sp = NULL;
 			}
+		}
+		if (gr) {
+			helix_codec_draws(codec, gr->y0, gr->y0 + GRAPH_H);
+		}
+		if (sp) {
+			helix_codec_draws(codec, sp->y0, sp->y0 + GRAPH_H);
 		}
 	}
 	memset(&sys, 0, sizeof sys);
@@ -863,10 +716,9 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 		const uint8_t *jpeg;
 		size_t jlen;
 		int64_t t0, t1, t2;
-		int r, fresh = 0;
-		unsigned out_i, cap_i;
+		int r, n, key, fresh = 0;
+		struct iovec iov[2];
 		size_t used;
-		uint32_t cflags, flags;
 
 		/* wait for the tick, picking up camera frames meanwhile */
 		for (;;) {
@@ -896,48 +748,27 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 			break;
 		}
 		if (r > 0) {
-			uint8_t *dst = dec.out[dec_out].map[0];
-			size_t cap = dec.out[dec_out].len[0];
-			size_t n = 0;
 			unsigned w2 = 0, h2 = 0;
+			int d;
 			if (jpeg_size(jpeg, jlen, &w2, &h2) == 0 && (w2 != width || h2 != height)) {
 				fprintf(stderr, "camera frame size changed to %ux%u, restarting\n", w2, h2);
 				break;
 			}
-			if (!jpeg_has_dht(jpeg, jlen)) {
-				if (!no_dht_warned) {
-					fprintf(stderr, "camera frames carry no Huffman tables; inserting the standard ones\n");
-					no_dht_warned = 1;
-				}
-				if (jlen + sizeof jpeg_std_dht <= cap) {
-					memcpy(dst, jpeg, 2);
-					memcpy(dst + 2, jpeg_std_dht, sizeof jpeg_std_dht);
-					memcpy(dst + 2 + sizeof jpeg_std_dht, jpeg + 2, jlen - 2);
-					n = jlen + sizeof jpeg_std_dht;
-				}
-			} else if (jlen <= cap) {
-				memcpy(dst, jpeg, jlen);
-				n = jlen;
-			}
+			d = helix_codec_decode(codec, jpeg, jlen);
 			src_release(&src);
-			if (n == 0) {
-				fprintf(stderr, "camera frame of %zu bytes does not fit the %zu byte decoder buffer\n", jlen, cap);
+			if (d < 0) {
+				fprintf(stderr, "k1os-stream: decoding stopped: %s\n", helix_codec_why());
+				break;
+			}
+			if (d == 0) {
+				/* a damaged frame: the picture before it is shown again */
+				if (skipped++ < 5) {
+					fprintf(stderr, "camera frame of %zu bytes left out: %s\n", jlen, helix_codec_why());
+				}
 			} else {
-				unsigned target = have_frame ? (last_nv12 ^ 1) : 0;
-				if (helix_queue_output(&dec, dec_out, n, 0) < 0 ||
-				    helix_queue_capture(&dec, target) < 0 ||
-				    helix_dequeue(&dec, &out_i, &cap_i, &used, &cflags, CODEC_TIMEOUT_MS) < 0) {
-					break;
-				}
-				dec_out ^= 1;
-				if (cflags & V4L2_BUF_FLAG_ERROR) {
-					fprintf(stderr, "JPEG decode error, frame skipped\n");
-				} else {
-					last_nv12 = cap_i;
-					have_frame = 1;
-					fresh = 1;
-					decoded++;
-				}
+				have_frame = 1;
+				fresh = 1;
+				decoded++;
 			}
 		}
 		t1 = now_ns();
@@ -965,40 +796,38 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 				}
 				last_lines = t1;
 			}
-			overlay_draw(&ov, dec.cap[last_nv12].map[0], dec.cap[last_nv12].map[1]);
+			overlay_draw(&ov, helix_codec_luma(codec), helix_codec_chroma(codec));
 			if (gr) {
-				graph_blit(gr, last_nv12, fresh, dec.cap[last_nv12].map[0], dec.cap[last_nv12].map[1]);
+				graph_blit(gr, 0, fresh, helix_codec_luma(codec), helix_codec_chroma(codec));
 			}
 			if (sp) {
-				graph_blit(sp, last_nv12, fresh, dec.cap[last_nv12].map[0], dec.cap[last_nv12].map[1]);
+				graph_blit(sp, 0, fresh, helix_codec_luma(codec), helix_codec_chroma(codec));
 			}
 		}
 
-		flags = (frames % gop_frames == 0 || key_wanted) ? V4L2_BUF_FLAG_KEYFRAME : 0;
+		/* a key picture is a little finer than the pictures predicted from it */
+		key = frames % gop_frames == 0 || key_wanted;
 		key_wanted = 0;
-		if (enc.out_dmabuf) {
-			r = helix_queue_output_dmabuf(&enc, enc_out, &dec, last_nv12, flags);
-		} else {
-			memcpy(enc.out[enc_out].map[0], dec.cap[last_nv12].map[0], enc.out[enc_out].len[0]);
-			memcpy(enc.out[enc_out].map[1], dec.cap[last_nv12].map[1], enc.out[enc_out].len[1]);
-			r = helix_queue_output(&enc, enc_out, enc.out[enc_out].len[0], flags);
-		}
-		if (r < 0 ||
-		    helix_queue_capture(&enc, enc_cap) < 0 ||
-		    helix_dequeue(&enc, &out_i, &cap_i, &used, &cflags, CODEC_TIMEOUT_MS) < 0) {
-			break;
-		}
-		enc_out ^= 1;
-		enc_cap ^= 1;
+		n = helix_codec_encode(codec, key, key ? (qp > qp_min + 2 ? qp - 2 : qp_min) : qp, iov);
 		t2 = now_ns();
 		enc_ns += t2 - t1;
-
-		if (used > 0) {
-			struct iovec iov[2];
-			int n = split_out_filler(enc.cap[cap_i].map[0], used, iov);
-			if (hooks->picture(hooks->ctx, iov, n) < 0) {
+		if (n < 0) {
+			fprintf(stderr, "k1os-stream: encoding stopped: %s\n", helix_codec_why());
+			break;
+		}
+		if (n == 0) {
+			/* no picture this time; the next one is a key picture */
+			if (++misses > fps * 5) {
+				fprintf(stderr, "k1os-stream: no picture for 5 s: %s\n", helix_codec_why());
 				break;
 			}
+			next_tick += period;
+			continue;
+		}
+		misses = 0;
+		used = iov[0].iov_len + (n > 1 ? iov[1].iov_len : 0);
+		if (hooks->picture(hooks->ctx, iov, n) < 0) {
+			break;
 		}
 		frames++;
 		frames_stats++;
@@ -1031,19 +860,15 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 			}
 			if (new_qp < qp_min) new_qp = qp_min;
 			if (new_qp > qp_max) new_qp = qp_max;
-			if (new_qp != qp) {
-				qp = new_qp;
-				helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP, qp);
-				helix_set_ctrl(&enc, V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP, qp > qp_min + 2 ? qp - 2 : qp_min);
-			}
+			qp = new_qp;
 		}
 
 		if (stats_s > 0 && t2 - last_stats >= (int64_t)stats_s * 1000000000LL) {
 			double secs = (t2 - last_stats) / 1e9;
 			last_kbit = bits_stats / secs / 1000.0;
 			fprintf(stderr, "k1os-stream: %.1f fps out, %.0f kbit/s, qp %d, camera %lu frames, "
-			        "%lu repeats, decode %.1f ms, encode %.1f ms%s\n",
-			        frames_stats / secs, bits_stats / secs / 1000.0, qp, src.received, repeats,
+			        "%lu left out, %lu repeats, decode %.1f ms, encode %.1f ms%s\n",
+			        frames_stats / secs, bits_stats / secs / 1000.0, qp, src.received, skipped, repeats,
 			        decoded ? dec_ns / 1e6 / decoded : 0.0, frames ? enc_ns / 1e6 / frames : 0.0,
 			        overlay_on && !pstate.valid ? ", Moonraker not reachable" : "");
 			write_status(status_file, started, width, height, frames_stats / secs,
@@ -1068,8 +893,7 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 	}
 	rc = (stop_now || (max_frames && frames >= max_frames)) ? 0 : 1;
 out:
-	helix_close(&enc);
-	helix_close(&dec);
+	helix_codec_close(codec);
 	src_close(&src);
 	if (moonraker_on) {
 		moonraker_stop();
@@ -1119,24 +943,3 @@ void k1os_camera_close(struct k1os_camera *cam)
 		free(cam);
 	}
 }
-
-#ifndef K1OS_STREAM_LIBRARY
-static int to_stdout(void *ctx, const struct iovec *iov, int n)
-{
-	(void)ctx;
-	if (write_all(STDOUT_FILENO, iov, n) < 0) {
-		fprintf(stderr, "stdout: %s\n", strerror(errno));
-		return -1;
-	}
-	return 0;
-}
-
-int main(int argc, char **argv)
-{
-	const struct k1os_stream_hooks hooks = { STDIN_FILENO, to_stdout, NULL, NULL, NULL };
-	signal(SIGINT, on_signal);
-	signal(SIGTERM, on_signal);
-	signal(SIGPIPE, SIG_IGN);
-	return k1os_stream_run(argc, argv, &hooks);
-}
-#endif

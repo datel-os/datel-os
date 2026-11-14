@@ -1,6 +1,6 @@
-/* k1os-stream as a part of another program: the same camera-to-H.264 pipeline
- * that the k1os-stream command runs, handing each picture to a function
- * instead of writing it to stdout.
+/* k1os-stream, a part of k1os-camera: the pipeline from camera frames to
+ * H.264 pictures (JPEG decode, status overlay and H.264 encode on the Helix
+ * codec), which hands each picture to a function of its caller.
  *
  * MIT License, part of Datel OS. */
 #ifndef K1OS_STREAM_H
@@ -27,7 +27,7 @@ struct k1os_stream_hooks {
 };
 
 /* Runs until k1os_stream_stop(), the end of the camera frames or an error;
- * argv holds the options of the k1os-stream command. Everything it opened
+ * argv holds its options (--help lists them). Everything it opened
  * is released again, so it can be called any number of times, but only one
  * run at a time. Returns 0 after a stop, 1 after an error, 2 for bad options. */
 int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks);

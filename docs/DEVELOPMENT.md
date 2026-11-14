@@ -27,7 +27,7 @@ The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/imag
 | `recipes-core/datel-branding/` | Hostname, MOTD, prompt, Mainsail logo |
 | `recipes-printer/` | `kalico`, `k1-mcu-firmware`, `k1os-mcu-update`, `moonraker`, `mainsail`, `guppyscreen`, `k1os-camera`, `moonraker-timelapse`, `k1os-helix`, `k1os-stream` |
 | `recipes-httpd/nginx/` | Mainsail and camera proxy configuration |
-| `recipes-devtools/zig/` | The Zig compiler (official binary) that builds `k1os-camera` |
+| `recipes-devtools/zig/` | The Zig compiler (official binary) that builds `k1os-camera` and `k1os-helix` |
 | `recipes-bsp/k1-wifi-nvram/` | Wi-Fi module calibration file |
 | `recipes-devtools/gcc/` | gcc built for FP64 and NaN 2008 |
 | `recipes-python/`, `recipes-connectivity/` | Python dependencies of Moonraker, sshd on a read-only root |
@@ -41,13 +41,20 @@ The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/imag
 
 ## Design decisions worth knowing
 
-**Everything from source, no blobs.** The only binaries in the image are the Wi-Fi chip firmware and its calibration data. The kernel's resume-from-suspend stub is rebuilt from its source in the tree; the vendor's rate-control library for the video encoder is replaced by a fixed-QP mode with the rate control in userspace.
+**Everything from source, no blobs.** The only binaries in the image are the Wi-Fi chip firmware and its calibration data. The kernel's resume-from-suspend stub is rebuilt from its source in the tree; the vendor's driver for the video codec, which wanted a prebuilt rate-control library, is replaced by Datel OS's own code.
 
 **FPU ABI.** The XBurst2 FPU has 64-bit registers and only the NaN 2008 encoding. The poky tune `mips32r2el` builds the o32 FP32 ABI with legacy NaN, which the kernel then emulates instruction by instruction; the first print died of it. Datel OS therefore has its own tune `mips32r2el-fp64` and gcc with `--with-fp-32=64 --with-nan=2008`, the same ABI as the stock userspace. Changing it means rebuilding the whole userspace.
 
 **Trial boot.** The stock SPL selects the slot by the text in `mmcblk0p1` and has no boot counter. `k1os-trial-boot.service` points the marker at the other slot before file systems are mounted; `k1os-slot-confirm.service` points it back once `/usr/data` is up and `/usr/data/k1os/boot-keep` exists. See `recipes-core/k1os-base/files/k1os-slot`.
 
-**Helix video codec.** The X2000 has a hardware H.264/JPEG encoder and JPEG decoder (Helix, `/dev/video1`, V4L2 memory-to-memory) and an H.264 decoder (Felix, not built). The vendor driver in `module_drivers/` is enabled with `CONFIG_VIDEO_INGENIC_VCODEC` and `CONFIG_INGENIC_HELIX` and needs a 32 MiB `shared-dma-pool` (`creality_k1.dts`). Three patches in `recipes-kernel/linux/files/`: `0001` adds the rate-control choice `RC_NONE` (the vendor offers a prebuilt `librc.a` or a netlink server nobody has), `0002` fixes a `MAX`/`MIN` redefinition under `-Werror`, `0003` builds the per-frame slice header and descriptor under `RC_NONE` and takes the QP from the V4L2 controls `V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP` and `P_FRAME_QP`. Userspace: `k1os-helix-enc` (timelapse) and `k1os-stream` (Twitch) in `recipes-printer/`. Driver quirks: `S_FMT` on the capture queue resets the encoder parameters, so controls are set after it; the control framework skips unchanged values, so write them after every `S_FMT`; the JPEG decoder returns the picture size in `buf->reserved`.
+**Helix video codec.** The X2000 has a hardware H.264/JPEG encoder and JPEG decoder (Helix) and an H.264 decoder (Felix, not used). The vendor's V4L2 driver is not used: it read JPEG headers in the kernel without checking a length, and one damaged camera frame stopped the SoC. Datel OS splits the work in two.
+
+- The kernel has `k1os-helix.c` (`drivers/misc/` of [zales/k1-linux](https://github.com/zales/k1-linux), `CONFIG_K1OS_HELIX`), a small driver for `/dev/helix`: the codec's power, its interrupt, memory out of the 32 MiB that the board's device tree reserves for it, mapped into the program, and the cache work around a job. It parses nothing. Two calls: `K1OS_HELIX_ALLOC` for memory, `K1OS_HELIX_RUN` for a job, which names the ranges the program wrote for the codec and the ranges the codec writes for the program.
+- Everything that reads a picture or tells the codec what to do is Zig, in `recipes-printer/k1os-helix/files/`: `helix.zig` (the device), `helix_jpeg.zig` (JPEG header parser, decode job), `helix_h264.zig` and `helix_cabac.zig` (parameter sets, slice header, CABAC start states, encode job), `helix_codec.zig` (a decoder and an encoder for pictures of one size). A job is a chain of register writes the codec reads from memory. `k1os-camera` links the same code as an object and k1os-stream's C calls it through `helix_codec.h`; `k1os-helix-enc` is the timelapse's encoder.
+
+The tests run on the build host: the parser against 200 000 damaged headers, and the chains, headers and CABAC states against what the vendor's driver produced for the same input (`testdata/`, made by compiling the vendor's C on a computer). On the printer `k1os-helix-test` decodes and encodes through the driver; the H.264 it gives is bit for bit the vendor driver's.
+
+Things to know when changing it: the codec's memory is cached in the program, so a row the program draws into after a decode has to be named (`drawsRows`), or the codec and the program do not see each other's bytes there; the pool hands out powers of two, so a 1280×720 stream (7.1 MiB) takes 8 MiB of the 32 and anything above 8 MiB would take 16; the codec keeps its power for half a second after a job, because its power gate takes 0.74 ms to open and the kernel waits for that with interrupts off.
 
 **Camera node sharing.** A UVC node streams to one process. That process is `k1os-camera`, which hands each frame to everyone who wants it: MJPEG clients, snapshots and its H.264 encoder.
 
