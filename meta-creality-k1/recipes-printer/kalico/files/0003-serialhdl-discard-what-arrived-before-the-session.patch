@@ -1,0 +1,74 @@
+From: Datel OS
+Subject: serialhdl: discard what the port received before the session starts
+
+connect_uart() runs stk500v2_leave() on every port it opens: the rate goes
+to 2400, then to 115200 for 150 ms, then back. A microcontroller that the
+host did not reset (the host rebooted, Klipper was restarted) goes on
+sending the reports of its last configuration at its own rate meanwhile,
+and what it sends in those 150 ms arrives as noise. stk500v2_leave() reads
+most of it away. What arrives between its last read and the change of the
+rate back stays in the tty's buffer: the session finds five or six bytes
+of noise in front of the next report and skips both, up to that report's
+sync byte. bytes_invalid then reads 14 to 21 right after the connect, on a
+link that is sound.
+
+Measured on a Creality K1 (the main MCU on a UART at 230400 baud, four ADC
+reports every 300 ms), Klipper stopped, klippy's own stk500v2_leave() on
+the port and its framing check on what follows: 3 of 150 and 4 of 150
+connects had such bytes under two serial drivers, and 21 to 24 of 100
+with 20 ms more between that last read and the rate change, which is what
+a busy host does to it while it boots.
+
+After stk500v2_leave(), read the port until it has been quiet for ten
+character times, 3 ms at least, and give up after 100 ms. The noise is
+gone then. Waiting for a quiet line, where a flush at a fixed moment would
+cut a report that is just arriving in two, also lets the session start
+between two reports. A connect takes 3.5 ms longer as a rule and 11 ms at
+most.
+
+With this change, on the same printer: 0 of 400 connects with invalid
+bytes under each of the two serial drivers, 0 of 100 with the 20 ms added,
+0 of 100 beside two processes that burn CPU. Klipper itself, restarted 20
+times against microcontrollers that kept running: bytes_invalid 0 on all
+three links every time.
+
+diff --git a/klippy/serialhdl.py b/klippy/serialhdl.py
+index 761a330..1747ef7 100644
+--- a/klippy/serialhdl.py
++++ b/klippy/serialhdl.py
+@@ -320,6 +320,7 @@ class SerialReader:
+                 self.reactor.pause(self.reactor.monotonic() + 5.0)
+                 continue
+             stk500v2_leave(serial_dev, self.reactor)
++            discard_stale_input(serial_dev, self.reactor)
+             ret = self._start_session(serial_dev)
+             if ret:
+                 break
+@@ -559,6 +560,27 @@ def stk500v2_leave(ser, reactor):
+     ser.baudrate = origbaud
+ 
+ 
++# Discard what a port received before a session starts on it
++def discard_stale_input(ser, reactor):
++    # A microcontroller that the host did not reset goes on sending the
++    # reports of its last configuration. What it sends while
++    # stk500v2_leave() holds the port at another rate arrives as noise, and
++    # a session would skip that noise together with the message after it,
++    # up to the next sync byte, and count both as invalid bytes. Read until
++    # the line has been quiet for ten character times (3 ms at least): the
++    # noise is gone then, and the session starts between two messages.
++    quiet_time = max(0.003, 100.0 / ser.baudrate)
++    end_time = reactor.monotonic() + 0.100
++    discarded = 0
++    while reactor.monotonic() < end_time:
++        reactor.pause(reactor.monotonic() + quiet_time)
++        data = ser.read(4096)
++        if not data:
++            break
++        discarded += len(data)
++    logging.debug("Discarded %d bytes received before the session", discarded)
++
++
+ def cheetah_reset(serialport, reactor):
+     # Fysetc Cheetah v1.2 boards have a weird stateful circuitry for
+     # configuring the bootloader. This sequence takes care of disabling it for

@@ -123,6 +123,14 @@ A kernel without PREEMPT_RT (6.6.162) stopped without a message within two secon
 - Through the new driver a 1280×720 decode takes 6.8 ms and an encode 8.9 ms. The camera daemon with one WebRTC viewer at 30 fps uses 7 % of a core without the overlay and 20 % with the graph panels; the panels are the rest, composed on the CPU byte by byte.
 - The software JPEG decoder (libjpeg-turbo) left the timelapse: it was there because the hardware decoder was not trusted. A damaged frame is now refused by the parser and left out.
 
+## 15 November 2026: invalid bytes after a connect
+
+- After two of six boots under the kernel's new serial driver Klipper counted 19 and 18 invalid bytes on the main MCU's link, where the boots before had read 0. The driver was the suspect and was not the cause: with Klipper stopped and its own connect sequence run on the port, 4 of 150 connects under the new driver and 3 of 150 under the old one had such bytes.
+- The cause is Klipper's way of connecting. On every connect `stk500v2_leave()` holds the port at 115200 baud for 150 ms, and the main MCU, which a reboot of the host does not reset, goes on sending four ADC reports every 300 ms at 230400 baud. A report that lands between that function's last read and the change of the rate back stays in the buffer as five or six bytes of noise, and the session skips them together with the report after it, up to its sync byte: 5 + 14 = 19. With 20 ms more at that point, which is what a busy host does during a boot, 21 to 24 of 100 connects had them.
+- Kalico is patched to read the port until it has been quiet for 3 ms before the session starts. The line is busy 0.8 % of the time, so a flush at a fixed moment would still have cut a report in two in about one connect of a hundred; waiting for a quiet line does not. Measured with the patch: 0 of 400 connects, 0 of 100 with the 20 ms added, 0 of 100 beside two processes that burn CPU, and 20 restarts of Klipper with `bytes_invalid` 0 on all three links. The wait took 3.5 ms as a rule and 11 ms at most.
+- The 9 retransmitted bytes that most connects show were there before the patch and are there after it. Their cause was not looked for.
+- The figures above are from the old serial driver. Under the new one the same 400 connects were run once: 0 with invalid bytes, the wait 3.5 ms as a rule and 9 ms at most.
+
 ## 15 November 2026: the CPU clock, searched again
 
 - Under the 6.18 kernel, with the clocks on upstream's framework, the search of 11 November was run again, this time from the top down in the PLL's steps of 24 MHz: bed at 60 °C, four `fptest` threads in pieces of 30 s, the clock set with `cpuclk` in between, a clock left at its first piece with a wrong result. 1008 MHz: 43 wrong in 37,641 rounds; 984 MHz: 16 in 37,152; 960 MHz: 2 in 35,583, each in the first 30 s; 936 MHz: 1 in 69,874, in the second 30 s; 912 MHz: none in 25 minutes, 1,701,154 rounds. No oops and no trace in the kernel's log at any of them.
