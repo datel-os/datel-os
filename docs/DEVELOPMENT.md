@@ -71,7 +71,7 @@ Things to know when changing it: the codec's memory is cached in the program, so
 - The RTOS of the third core (`zero.bin`, partitions p3/p4) is closed and shows the boot logo. `tools/rtos-splash.py` can replace the logo JPEGs inside a copy of the partition with the Datel OS logo; write the result only to the Datel OS slot and keep the original.
 - The Wi-Fi firmware is `cyfmac43430` from linux-firmware; the NVRAM is the AP6212A file from the Ingenic SDK and stock (`ccode=CN`), installed as `brcmfmac43430-sdio.creality,k1.txt`. The regulatory database is in the image, so the kernel uses the country from `wpa_supplicant.conf`.
 - The MAC address is read from the `sn_mac` partition before wpa_supplicant starts (`wifi-mac`), falling back to `/usr/data/macaddr.txt`, so the router gives the printer the same address as stock.
-- `clock_gettime` costs 12 µs on this kernel (OST clocksource under a spinlock, no vDSO).
+- `clock_gettime` is a system call and costs about 0.7 µs, of which 0.4 µs is the system call itself: the kernel's vDSO cannot read the X2000's timer. The coarse clocks (`CLOCK_MONOTONIC_COARSE`, in 10 ms steps) are answered from the vDSO in 0.06 µs.
 - The RAM for Linux is 216 MiB with the codec's DMA pool. Input shaper fitting on the printer does not fit in it; `tools/shaper-fit.sh` does it on the computer.
 
 ## Branches
