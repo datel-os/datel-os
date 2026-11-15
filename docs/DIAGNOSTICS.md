@@ -94,7 +94,7 @@ Internal error in stepcompress
 | 912 MHz | none in 25 minutes (1.28 million rounds) |
 | 750 MHz | none, and a print of 127 minutes without a step error |
 
-The kernel therefore reprograms the PLL at boot (`CONFIG_CLK_X2000_CPU_MHZ=816`, one 96 MHz step below the highest clean frequency) and says so:
+The kernel therefore reprograms the PLL at boot (the board's device tree assigns it 816 MHz, one 96 MHz step below the highest clean frequency) and says so:
 
 ```bash
 ssh root@<ip> 'dmesg | grep "CPU clock"'
