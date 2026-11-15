@@ -11,10 +11,11 @@ inherit kernel
 
 # main of zales/k1-linux. Everything reaches that branch through pull requests,
 # and each of them says what it was checked with on the printer; the commit
-# here is the merge of pull request 28 (the X2000 on upstream's Ingenic
-# platform, after its interrupt controller in 26 and its timer in 27).
+# here is the one of pull request 30, which sets the CPU to 912 MHz. Below it
+# are the X2000 on upstream's Ingenic platform (pull requests 26 to 28) and
+# the README of pull request 29.
 SRC_URI = "git://github.com/zales/k1-linux.git;protocol=https;branch=main"
-SRCREV = "872501af31de449be948ab3545999cc3d8b6a975"
+SRCREV = "1683216cdd73ef93fa0bf3d8b6358163bd60ea7d"
 S = "${WORKDIR}/git"
 
 LINUX_VERSION = "6.18.63"
@@ -23,7 +24,7 @@ PV = "${LINUX_VERSION}+git${SRCPV}"
 COMPATIBLE_MACHINE = "creality-k1"
 
 # The configuration is the tree's own k1_defconfig. It builds the board's
-# device tree into the kernel, and that device tree sets the CPU to 816 MHz
+# device tree into the kernel, and that device tree sets the CPU to 912 MHz
 # (the boot loader's 1200 MHz gives wrong floating point results on the K1).
 # It has the Helix driver, runtime power management and what systemd and the
 # image's services need; the check below names what the image depends on.
@@ -72,8 +73,8 @@ do_configure:append() {
     done
     # The CPU's clock was an option of the SDK's clock driver. With upstream's
     # framework the board's device tree assigns it, so that is what is checked.
-    grep -q 'assigned-clock-rates = <816000000>;' ${S}/arch/mips/boot/dts/ingenic/creality-k1.dts || \
-        bbfatal "the board's device tree does not set the CPU to 816 MHz"
+    grep -q 'assigned-clock-rates = <912000000>;' ${S}/arch/mips/boot/dts/ingenic/creality-k1.dts || \
+        bbfatal "the board's device tree does not set the CPU to 912 MHz"
 }
 
 # The stock boot loader takes a legacy U-Boot image of a kernel that unpacks
