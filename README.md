@@ -40,10 +40,10 @@ Short version; the full procedure with backup, recovery and first-start steps is
 
 1. Copy your SSH key to the stock printer: `ssh-copy-id -i ~/.ssh/k1_printer_ecdsa.pub root@<ip>`.
 2. Download a [release](https://github.com/zales/datel-os/releases) and verify `SHA256SUMS`, or build (below).
-3. Write the inactive slot and verify it:
+3. Write the inactive slot and verify it. `IDLE=1` says that the printer is not printing: stock without Moonraker cannot tell the script, and it does not write on a guess:
 
 ```bash
-KERNEL=dl/datel-os-vX.Y.Z-xImage ROOTFS=dl/datel-os-vX.Y.Z-rootfs.squashfs PRINTER=root@<ip> tools/flash-slot2.sh --write
+IDLE=1 KERNEL=dl/datel-os-vX.Y.Z-xImage ROOTFS=dl/datel-os-vX.Y.Z-rootfs.squashfs PRINTER=root@<ip> tools/flash-slot2.sh --write
 ```
 
 4. Point the boot marker at the new slot and power-cycle the printer:

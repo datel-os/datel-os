@@ -90,10 +90,10 @@ Datel OS is written into the slot the printer is not running from: from stock (s
 gh release download v0.3.0 -R zales/datel-os -D dl/ && (cd dl && shasum -a 256 -c SHA256SUMS)
 ```
 
-2. Write, verify and switch the marker. From stock into slot 2 (`PRINTER=root@<ip>`):
+2. Write, verify and switch the marker. From stock into slot 2 (`PRINTER=root@<ip>`; `IDLE=1` because stock without Moonraker cannot tell the script that nothing prints):
 
 ```bash
-KERNEL=dl/datel-os-v0.3.0-xImage ROOTFS=dl/datel-os-v0.3.0-rootfs.squashfs PRINTER=root@192.168.1.102 tools/flash-slot2.sh --write
+IDLE=1 KERNEL=dl/datel-os-v0.3.0-xImage ROOTFS=dl/datel-os-v0.3.0-rootfs.squashfs PRINTER=root@192.168.1.102 tools/flash-slot2.sh --write
 ```
 
 ```bash

@@ -12,7 +12,7 @@ ssh-copy-id -i ~/.ssh/k1_printer_ecdsa.pub root@<ip>
 ```
 
 - The release files (`gh release download vX.Y.Z -R zales/datel-os -D dl/`, then `shasum -a 256 -c SHA256SUMS` in `dl/`) or your own build, see [DEVELOPMENT.md](DEVELOPMENT.md).
-- The printer must not be printing. `tools/flash-slot2.sh` refuses to write while a print runs or is paused.
+- The printer must not be printing. `tools/flash-slot2.sh` refuses to write while a print runs or is paused, and also when it cannot find out: it asks Moonraker, which Datel OS runs and stock does not unless you added it. From such a stock, put `IDLE=1` in front of the write command to say that nothing prints.
 
 ### Back up the eMMC
 
@@ -34,7 +34,7 @@ The script runs from the repository checkout. `PRINTER` is the SSH target, `KEY`
 KERNEL=dl/datel-os-vX.Y.Z-xImage ROOTFS=dl/datel-os-vX.Y.Z-rootfs.squashfs PRINTER=root@<ip> tools/flash-slot2.sh
 ```
 
-2. Write both partitions, read them back and compare the MD5. The marker is not touched.
+2. Write both partitions, read them back and compare the MD5. The marker is not touched. From stock without Moonraker the command starts with `IDLE=1` (see above).
 
 ```bash
 KERNEL=dl/datel-os-vX.Y.Z-xImage ROOTFS=dl/datel-os-vX.Y.Z-rootfs.squashfs PRINTER=root@<ip> tools/flash-slot2.sh --write
