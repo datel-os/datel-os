@@ -129,7 +129,7 @@ A kernel without PREEMPT_RT (6.6.162) stopped without a message within two secon
 - The cause is Klipper's way of connecting. On every connect `stk500v2_leave()` holds the port at 115200 baud for 150 ms, and the main MCU, which a reboot of the host does not reset, goes on sending four ADC reports every 300 ms at 230400 baud. A report that lands between that function's last read and the change of the rate back stays in the buffer as five or six bytes of noise, and the session skips them together with the report after it, up to its sync byte: 5 + 14 = 19. With 20 ms more at that point, which is what a busy host does during a boot, 21 to 24 of 100 connects had them.
 - Kalico is patched to read the port until it has been quiet for 3 ms before the session starts. The line is busy 0.8 % of the time, so a flush at a fixed moment would still have cut a report in two in about one connect of a hundred; waiting for a quiet line does not. Measured with the patch: 0 of 400 connects, 0 of 100 with the 20 ms added, 0 of 100 beside two processes that burn CPU, and 20 restarts of Klipper with `bytes_invalid` 0 on all three links. The wait took 3.5 ms as a rule and 11 ms at most.
 - The 9 retransmitted bytes that most connects show were there before the patch and are there after it. Their cause was not looked for.
-- Measured under the old serial driver only. The model of the port that the patch was checked against covers the new driver's way of handing a report over in one piece; a run on the printer under it is still owed.
+- The figures above are from the old serial driver. Under the new one the same 400 connects were run once: 0 with invalid bytes, the wait 3.5 ms as a rule and 9 ms at most.
 
 ## Phases
 

@@ -27,9 +27,10 @@ between two reports. A connect takes 3.5 ms longer as a rule and 11 ms at
 most.
 
 With this change, on the same printer: 0 of 400 connects with invalid
-bytes, 0 of 100 with the 20 ms added, 0 of 100 beside two processes that
-burn CPU. Klipper itself, restarted 20 times against microcontrollers that
-kept running: bytes_invalid 0 on all three links every time.
+bytes under each of the two serial drivers, 0 of 100 with the 20 ms added,
+0 of 100 beside two processes that burn CPU. Klipper itself, restarted 20
+times against microcontrollers that kept running: bytes_invalid 0 on all
+three links every time.
 
 diff --git a/klippy/serialhdl.py b/klippy/serialhdl.py
 index 761a330..1747ef7 100644
