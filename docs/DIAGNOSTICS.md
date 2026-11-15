@@ -117,3 +117,7 @@ The printer has 216 MB of RAM for Linux. Three things keep a shortage from freez
 - **The print is the last to go.** `OOMScoreAdjust`: Twitch stream 700, a timelapse render 500, the camera daemon 300, Moonraker -300, Klipper and its host MCU -900.
 
 Tested by a process that takes 8 MB a second: it was killed after 19 s, the printer answered every second in between and Klipper stayed ready.
+
+## A look at the processes
+
+`htop` is in the image. Over SSH it shows what each process takes of the two CPUs and of the memory at this moment; `H` lists the threads of a process one by one. The health line and the flight recorder say what happened earlier, `htop` what happens now.

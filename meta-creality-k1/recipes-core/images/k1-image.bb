@@ -37,6 +37,9 @@ IMAGE_INSTALL += "moonraker-timelapse k1os-helix"
 # Twitch live stream with a status overlay: its service and Mainsail controls
 # (k1os-camera encodes and sends it).
 IMAGE_INSTALL += "k1os-stream"
+# For a look at the running printer over SSH: what each process and thread
+# takes of the two CPUs and of the memory.
+IMAGE_INSTALL += "htop"
 
 IMAGE_ROOTFS_EXTRA_SPACE = "0"
 
