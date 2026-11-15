@@ -4,7 +4,7 @@ What Datel OS does so that a printer in trouble recovers by itself and leaves a 
 
 ## Hardware watchdog
 
-systemd pings the X2000's watchdog (`RuntimeWatchdogSec=30s`). When the system stops, the SoC resets after 30 s and boots again. A print that was running is lost either way; what the watchdog saves is the trip to the power switch.
+systemd pings the X2000's watchdog (`RuntimeWatchdogSec=30s`). When the system stops, the SoC resets after 30 s and boots again. Ten seconds before the reset the watchdog's pre-timeout panics the kernel (`RuntimeWatchdogPreSec=10s`), and the panic with the kernel's last lines is in `/sys/fs/pstore` after the restart; removing a file there frees its place for the next record. A print that was running is lost either way; what the watchdog saves is the trip to the power switch.
 
 The watchdog watches systemd only. A system that is merely very slow keeps pinging; that case is what the memory settings below are for.
 

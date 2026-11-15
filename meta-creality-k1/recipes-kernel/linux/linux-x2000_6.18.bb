@@ -54,15 +54,18 @@ do_configure:prepend() {
 # built-in regulatory database, the camera, /dev/helix, zram swap and the
 # multi-gen LRU (k1os-base), per-thread scheduling statistics (k1os-trace),
 # the GPIO and I2C character devices (OpenOCD, Klipper's host MCU), the kernel
-# log kept over a restart, and runtime power management (without it the USB
-# controller interrupts 8000 times a second at idle).
+# log kept over a restart, runtime power management (without it the USB
+# controller interrupts 8000 times a second at idle), and the hardware
+# watchdog with a pre-timeout that panics (systemd sets the pre-timeout, and
+# reads the governor from sysfs before it does: k1os-base).
 do_configure:append() {
     for opt in CONFIG_MACH_XBURST2=y CONFIG_BUILTIN_DTB=y CONFIG_CLK_X2000_CPU_MHZ=816 \
                CONFIG_SQUASHFS_XZ=y CONFIG_BRCMFMAC=m \
                'CONFIG_EXTRA_FIRMWARE="regulatory.db regulatory.db.p7s"' 'CONFIG_EXTRA_FIRMWARE_DIR="k1os-firmware"' \
                CONFIG_USB_VIDEO_CLASS=y CONFIG_K1OS_HELIX=y \
                CONFIG_ZRAM=y CONFIG_LRU_GEN=y CONFIG_LRU_GEN_ENABLED=y CONFIG_SCHEDSTATS=y \
-               CONFIG_GPIO_CDEV=y CONFIG_I2C_CHARDEV=y CONFIG_PSTORE_RAM=y CONFIG_PM=y; do
+               CONFIG_GPIO_CDEV=y CONFIG_I2C_CHARDEV=y CONFIG_PSTORE_RAM=y CONFIG_PM=y \
+               CONFIG_JZ4740_WDT=y CONFIG_WATCHDOG_SYSFS=y CONFIG_WATCHDOG_PRETIMEOUT_DEFAULT_GOV_PANIC=y; do
         grep -qx "$opt" ${B}/.config || bbfatal "kernel config is missing $opt"
     done
 }
