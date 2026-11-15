@@ -12,6 +12,11 @@
 # (OUT= names another directory); KERNEL= and ROOTFS= name the two files
 # directly, e.g. the ones from a GitHub Release.
 #
+# A write is refused while a print runs or is paused, and also when the
+# printer does not say: Moonraker is not up yet after a boot, Klipper is not
+# connected, or it is stock firmware without Moonraker. IDLE=1 says that no
+# print is running and lets the write go on then.
+#
 # Datel OS boots as a trial: its first step points the marker back at slot 1,
 # so a power cycle returns to stock until you run "k1os-slot keep" on it.
 set -euo pipefail
@@ -71,7 +76,23 @@ get() { echo "$STATE" | sed -n "s/^$1=//p"; }
 
 case " $(get cmdline) " in *" root=$FROM "*) ;; *) die "not running from slot $OTHER ($FROM); refusing to touch slot $SLOT" ;; esac
 [ "$(get marker)" = "$MARK_FROM" ] || [ "$MODE" = "--switch" ] || die "marker is '$(get marker)', expected $MARK_FROM"
-case "$(get print)" in printing|paused) die "a print is $(get print); wait until it finishes" ;; esac
+# Only an answer that says so counts as "no print". IDLE=1 is the user's word
+# for it where the printer gives none; it does not overrule a print that the
+# printer reports.
+case "$(get print)" in
+printing|paused)
+    die "a print is $(get print); wait until it finishes" ;;
+standby|complete|cancelled|error)
+    ;;
+*)
+    if [ "${IDLE:-}" = 1 ]; then
+        echo "print state not readable; IDLE=1 says that no print is running"
+    elif [ "$MODE" = "--write" ]; then
+        die "cannot read the print state (got '$(get print)'): wait until Klipper is ready, or set IDLE=1 if no print is running"
+    elif [ "$MODE" = check ]; then
+        echo "print state not readable: --write will refuse unless IDLE=1 says that no print is running"
+    fi ;;
+esac
 [ "$KS" -le "$(get kdev)" ] || die "kernel $KS B does not fit $KDEV"
 [ "$RS" -le "$(get rdev)" ] || die "rootfs $RS B does not fit $RDEV"
 echo "== images (slot $SLOT)"
