@@ -94,7 +94,17 @@ Internal error in stepcompress
 | 912 MHz | none in 25 minutes (1.28 million rounds) |
 | 750 MHz | none, and a print of 127 minutes without a step error |
 
-The kernel therefore reprograms the PLL at boot (the board's device tree assigns it 816 MHz, one 96 MHz step below the highest clean frequency) and says so:
+The search was repeated on 15 November 2026 under the 6.18 kernel, from the top down: the bed at 60 °C, the board at 37 to 41 °C, `fptest` in pieces of 30 s, and a clock was left at its first piece with a wrong result.
+
+| CPU clock | Wrong results |
+|---|---|
+| 1008 MHz | 43 in 37,641 rounds, in the first 30 s |
+| 984 MHz | 16 in 37,152 rounds, in the first 30 s |
+| 960 MHz | 2 in 35,583 rounds, in the first 30 s |
+| 936 MHz | 1 in 69,874 rounds, in the second 30 s |
+| 912 MHz | none in 25 minutes (1,701,154 rounds) |
+
+The kernel therefore reprograms the PLL at boot: the board's device tree assigns it 912 MHz, the highest clock that stayed clean, one 24 MHz step of the PLL below a clock that failed within a minute. Up to version 0.6.0 it was 816 MHz, four steps lower. Both searches heated the bed only; a printer that has just printed gave more wrong results than that on 11 November, so the one step of margin is thin and a print is what decides. The kernel says what it set:
 
 ```bash
 ssh root@<ip> 'dmesg | grep "CPU clock"'

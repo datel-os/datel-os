@@ -123,6 +123,14 @@ A kernel without PREEMPT_RT (6.6.162) stopped without a message within two secon
 - Through the new driver a 1280×720 decode takes 6.8 ms and an encode 8.9 ms. The camera daemon with one WebRTC viewer at 30 fps uses 7 % of a core without the overlay and 20 % with the graph panels; the panels are the rest, composed on the CPU byte by byte.
 - The software JPEG decoder (libjpeg-turbo) left the timelapse: it was there because the hardware decoder was not trusted. A damaged frame is now refused by the parser and left out.
 
+## 15 November 2026: the CPU clock, searched again
+
+- Under the 6.18 kernel, with the clocks on upstream's framework, the search of 11 November was run again, this time from the top down in the PLL's steps of 24 MHz: bed at 60 °C, four `fptest` threads in pieces of 30 s, the clock set with `cpuclk` in between, a clock left at its first piece with a wrong result. 1008 MHz: 43 wrong in 37,641 rounds; 984 MHz: 16 in 37,152; 960 MHz: 2 in 35,583, each in the first 30 s; 936 MHz: 1 in 69,874, in the second 30 s; 912 MHz: none in 25 minutes, 1,701,154 rounds. No oops and no trace in the kernel's log at any of them.
+- At 1008 MHz wrong results were about thirty times as frequent as on 11 November (1 in 875 rounds against 1 in 25,000). The board was about 7 °C warmer at that clock this time (40.8 against 33 to 34 °C); the kind of error is the same, a result off in its last bits.
+- The CPU now runs at 912 MHz, which the board's device tree in zales/k1-linux assigns. It is the highest clean clock with one step of margin, where 816 MHz had four, and it was chosen for speed: the CPU is what limits a fast print with the camera streaming. What decides is a print: both searches heated the bed only, and on 11 November a printer that had just printed gave far more wrong results at 1200 MHz than that.
+- `fptest` does more rounds a minute under this kernel than it did on 11 November under the SDK kernel 6.6 with PREEMPT_RT: about 68,000 at 912 MHz against 51,000. The build of the program may differ between the two days, so this is not a measurement of the kernels.
+- The kernel built with that device tree says "CPU clock set to 912 MHz" at boot and leaves the clock unit's two registers exactly as the search's `cpuclk` had them at that clock (CPCCR 0x9a094410, CPAPCR 0x0250086d).
+
 ## Phases
 
 0. **Rescue:** eMMC backup and USB mask-ROM boot. Backup done; USB boot described, not verified on S12.
