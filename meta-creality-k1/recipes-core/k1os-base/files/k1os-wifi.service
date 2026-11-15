@@ -14,7 +14,9 @@ Wants=network.target
 [Service]
 Type=simple
 ExecStartPre=/usr/libexec/k1os/wifi-mac
-ExecStart=/usr/sbin/wpa_supplicant -i wlan0 -c /usr/data/k1os/wpa_supplicant.conf
+# The user's networks come from /usr/data/k1os, the image's own settings
+# (when to look for a better access point) from /etc/k1os.
+ExecStart=/usr/sbin/wpa_supplicant -i wlan0 -c /usr/data/k1os/wpa_supplicant.conf -I /etc/k1os/wpa_supplicant.conf
 Restart=always
 RestartSec=5
 
