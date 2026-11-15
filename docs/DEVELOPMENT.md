@@ -34,7 +34,7 @@ The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/imag
 
 ## What it is built on
 
-- **Kernel:** Linux 6.18.63, kernel.org's stable kernel plus the K1's support, from [zales/k1-linux](https://github.com/zales/k1-linux) at the commit of `main` that `linux-x2000_6.18.bb` pins. That repository's README says how it is put together: the X2000 platform and its drivers are carried over from Ingenic's SDK kernel 6.6 (the tree NebulaOS keeps for the Ender-3 V3 KE), everything reaches `main` through pull requests, and each of those says what it was checked with on a printer. The kernel is preemptible (`CONFIG_PREEMPT`), not PREEMPT_RT, which mainline does not offer for MIPS. Releases up to 0.5.1 shipped the SDK kernel 6.6.157 with PREEMPT_RT.
+- **Kernel:** Linux 6.18.63, kernel.org's stable kernel plus the K1's support, from [zales/k1-linux](https://github.com/zales/k1-linux) at the commit of `main` that `linux-x2000_6.18.bb` pins. That repository's README says how it is put together: the X2000 is one of the SoCs of upstream's Ingenic platform; its clocks, interrupt controller, timer and second CPU have drivers written from Ingenic's SDK kernel 6.6 (the tree NebulaOS keeps for the Ender-3 V3 KE) in the form of upstream's drivers for related chips, its other devices run on upstream's drivers with the X2000 added, everything reaches `main` through pull requests, and each of those says what it was checked with on a printer. The kernel is preemptible (`CONFIG_PREEMPT`), not PREEMPT_RT, which mainline does not offer for MIPS. Releases up to 0.5.1 shipped the SDK kernel 6.6.157 with PREEMPT_RT.
 - **Configuration:** the tree's `k1_defconfig`, taken as it is. The recipe adds only the wireless regulatory database as built-in firmware and stops the build if an option the image depends on is missing. `uname -r` is `6.18.63`, and the modules (brcmfmac and the USB network adapters) come from the same build.
 - **Device tree:** `arch/mips/boot/dts/ingenic/creality-k1.dts` of that tree, built into the kernel: console, MCU UARTs, eMMC, Wi-Fi, USB, the codec's 32 MiB of memory, the area for the kernel log kept over a restart. `hardware/` here holds the stock files its values come from.
 - **System:** Yocto scarthgap (poky, meta-oe, meta-python, meta-networking, meta-webserver, meta-arm for the MCU toolchain), systemd, read-only root.
@@ -42,7 +42,7 @@ The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/imag
 
 ## Design decisions worth knowing
 
-**Everything from source, no blobs.** The only binaries in the image are the Wi-Fi chip firmware and its calibration data. The kernel's resume-from-suspend stub is rebuilt from its source in the tree; the vendor's driver for the video codec, which wanted a prebuilt rate-control library, is replaced by Datel OS's own code.
+**Everything from source, no blobs.** The only binaries in the image are the Wi-Fi chip firmware and its calibration data. The vendor's driver for the video codec, which wanted a prebuilt rate-control library, is replaced by Datel OS's own code.
 
 **FPU ABI.** The XBurst2 FPU has 64-bit registers and only the NaN 2008 encoding. The poky tune `mips32r2el` builds the o32 FP32 ABI with legacy NaN, which the kernel then emulates instruction by instruction; the first print died of it. Datel OS therefore has its own tune `mips32r2el-fp64` and gcc with `--with-fp-32=64 --with-nan=2008`, the same ABI as the stock userspace. Changing it means rebuilding the whole userspace.
 
@@ -71,7 +71,7 @@ Things to know when changing it: the codec's memory is cached in the program, so
 - The RTOS of the third core (`zero.bin`, partitions p3/p4) is closed and shows the boot logo. `tools/rtos-splash.py` can replace the logo JPEGs inside a copy of the partition with the Datel OS logo; write the result only to the Datel OS slot and keep the original.
 - The Wi-Fi firmware is `cyfmac43430` from linux-firmware; the NVRAM is the AP6212A file from the Ingenic SDK and stock (`ccode=CN`), installed as `brcmfmac43430-sdio.creality,k1.txt`. The regulatory database is in the image, so the kernel uses the country from `wpa_supplicant.conf`.
 - The MAC address is read from the `sn_mac` partition before wpa_supplicant starts (`wifi-mac`), falling back to `/usr/data/macaddr.txt`, so the router gives the printer the same address as stock.
-- `clock_gettime` costs 12 µs on this kernel (OST clocksource under a spinlock, no vDSO).
+- `clock_gettime` is a system call and costs about 0.7 µs, of which 0.4 µs is the system call itself: the kernel's vDSO cannot read the X2000's timer. The coarse clocks (`CLOCK_MONOTONIC_COARSE`, in 10 ms steps) are answered from the vDSO in 0.06 µs.
 - The RAM for Linux is 216 MiB with the codec's DMA pool. Input shaper fitting on the printer does not fit in it; `tools/shaper-fit.sh` does it on the computer.
 
 ## Branches

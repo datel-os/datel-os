@@ -6,6 +6,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 SRC_URI = "file://after-volatile-lib.conf file://usr-data.mount file://k1os-datadir.service file://k1os-datadir-setup \
            file://k1os-wifi.service file://80-wlan.network file://guppyscreen-restart \
+           file://k1os-wifi-modprobe.conf \
            file://serial-autologin.conf file://k1os-wifi-mac \
            file://k1os-slot file://k1os-trial-boot.service file://k1os-slot-confirm.service \
            file://k1os-bootlog.service file://k1os-bootlog.timer file://10-watchdog.conf file://k1os-logstream.service \
@@ -33,6 +34,7 @@ do_install() {
     install -m 0755 ${WORKDIR}/k1os-seed-webcam ${D}${libexecdir}/k1os/seed-webcam
     install -m 0644 ${WORKDIR}/k1os-seed-webcam.service ${D}${systemd_system_unitdir}/
     install -m 0644 ${WORKDIR}/k1os-wifi.service ${D}${systemd_system_unitdir}/
+    install -D -m 0644 ${WORKDIR}/k1os-wifi-modprobe.conf ${D}${sysconfdir}/modprobe.d/k1os-wifi.conf
     install -d ${D}${sysconfdir}/systemd/system.conf.d
     install -m 0644 ${WORKDIR}/10-watchdog.conf ${D}${sysconfdir}/systemd/system.conf.d/
     install -m 0644 ${WORKDIR}/k1os-logstream.service ${D}${systemd_system_unitdir}/

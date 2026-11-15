@@ -4,7 +4,7 @@ What Datel OS does so that a printer in trouble recovers by itself and leaves a 
 
 ## Hardware watchdog
 
-systemd pings the X2000's watchdog (`RuntimeWatchdogSec=30s`). When the system stops, the SoC resets after 30 s and boots again. A print that was running is lost either way; what the watchdog saves is the trip to the power switch.
+systemd pings the X2000's watchdog (`RuntimeWatchdogSec=30s`). When the system stops, the SoC resets after 30 s and boots again. Ten seconds before the reset the watchdog's pre-timeout panics the kernel (`RuntimeWatchdogPreSec=10s`), and the panic with the kernel's last lines is in `/sys/fs/pstore` after the restart; removing a file there frees its place for the next record. A print that was running is lost either way; what the watchdog saves is the trip to the power switch.
 
 The watchdog watches systemd only. A system that is merely very slow keeps pinging; that case is what the memory settings below are for.
 
@@ -94,7 +94,7 @@ Internal error in stepcompress
 | 912 MHz | none in 25 minutes (1.28 million rounds) |
 | 750 MHz | none, and a print of 127 minutes without a step error |
 
-The kernel therefore reprograms the PLL at boot (`CONFIG_CLK_X2000_CPU_MHZ=816`, one 96 MHz step below the highest clean frequency) and says so:
+The kernel therefore reprograms the PLL at boot (the board's device tree assigns it 816 MHz, one 96 MHz step below the highest clean frequency) and says so:
 
 ```bash
 ssh root@<ip> 'dmesg | grep "CPU clock"'

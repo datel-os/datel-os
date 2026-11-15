@@ -17,12 +17,14 @@ log() { echo "$(date '+%T') $*" | tee -a "$LOG"; }
 
 # Over a reboot the MCUs keep their power and go on running their application:
 # no bootloader answers then, and the full wait for one (20 s) would hold up
-# the whole boot, this unit being ordered before sysinit.target. The RTC loses
-# its state together with the board's power and the kernel says so ("rtc
-# power on reset"). Without that line this is a reboot and a short probe is
-# enough; a bootloader that is there after all still answers it.
+# the whole boot, this unit being ordered before sysinit.target. The SoC keeps
+# why it last reset and the kernel says it once in every boot ("reset status
+# RSR=0x00000001 power-on ..."): the reset pin, which is also what a power-on
+# leaves, as against a restart or the watchdog. Without "power-on" in that
+# line this is a reboot and a short probe is enough; a bootloader that is
+# there after all still answers it.
 QUICK=
-if ! dmesg | grep -q 'rtc power on reset'; then
+if ! dmesg | grep -qE 'reset status RSR=0x[0-9a-f]+ power-on'; then
     QUICK=--quick
     log "reboot without a power cycle: short bootloader probe"
 fi
