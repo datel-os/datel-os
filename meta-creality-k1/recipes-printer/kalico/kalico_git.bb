@@ -13,7 +13,8 @@ SRC_URI = "git://github.com/pellcorp/kalico.git;protocol=https;branch=nov2026 \
            file://k1os-kalico-config \
            file://k1os-kalico-config.service \
            file://0001-plan-4-s-and-send-steps-3-s-ahead.patch \
-           file://0002-load_cell-measure-only-while-the-samples-are-used.patch"
+           file://0002-load_cell-measure-only-while-the-samples-are-used.patch \
+           file://0003-serialhdl-discard-what-arrived-before-the-session.patch"
 SRCREV = "7095e20918e5290c6aa754dbc9d6513c8959db14"
 PV = "nov2026+git${SRCPV}"
 S = "${WORKDIR}/git"
