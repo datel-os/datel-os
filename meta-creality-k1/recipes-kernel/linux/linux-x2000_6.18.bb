@@ -1,8 +1,9 @@
 SUMMARY = "Linux 6.18 for the Creality K1 (Ingenic X2000)"
 DESCRIPTION = "kernel.org's stable Linux 6.18 with what the K1's board needs, from \
-zales/k1-linux: the X2000's platform, timer and interrupt controller carried over from \
-Ingenic's SDK kernel, upstream's clock framework and drivers with the X2000 added, \
-the board's device tree, and the driver for the Helix codec (/dev/helix)."
+zales/k1-linux: the X2000 as a SoC of upstream's Ingenic platform, drivers for its \
+clocks, interrupt controller, timer and second CPU, upstream's drivers with the X2000 \
+added for its other devices, the board's device tree, and the driver for the Helix \
+codec (/dev/helix)."
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
 
@@ -10,9 +11,10 @@ inherit kernel
 
 # main of zales/k1-linux. Everything reaches that branch through pull requests,
 # and each of them says what it was checked with on the printer; the commit
-# here is the merge of pull request 25 (the clocks on upstream's framework).
+# here is the merge of pull request 28 (the X2000 on upstream's Ingenic
+# platform, after its interrupt controller in 26 and its timer in 27).
 SRC_URI = "git://github.com/zales/k1-linux.git;protocol=https;branch=main"
-SRCREV = "b73fa635eb9c364c76ced148e103f46be922ec0e"
+SRCREV = "872501af31de449be948ab3545999cc3d8b6a975"
 S = "${WORKDIR}/git"
 
 LINUX_VERSION = "6.18.63"
@@ -59,7 +61,7 @@ do_configure:prepend() {
 # watchdog with a pre-timeout that panics (systemd sets the pre-timeout, and
 # reads the governor from sysfs before it does: k1os-base).
 do_configure:append() {
-    for opt in CONFIG_MACH_XBURST2=y CONFIG_BUILTIN_DTB=y \
+    for opt in CONFIG_MACH_INGENIC_SOC=y CONFIG_X2000_CREALITY_K1=y CONFIG_BUILTIN_DTB=y \
                CONFIG_SQUASHFS_XZ=y CONFIG_BRCMFMAC=m \
                'CONFIG_EXTRA_FIRMWARE="regulatory.db regulatory.db.p7s"' 'CONFIG_EXTRA_FIRMWARE_DIR="k1os-firmware"' \
                CONFIG_USB_VIDEO_CLASS=y CONFIG_K1OS_HELIX=y \
