@@ -42,7 +42,7 @@ The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/imag
 
 ## Design decisions worth knowing
 
-**Everything from source, no blobs.** The only binaries in the image are the Wi-Fi chip firmware and its calibration data. The kernel's resume-from-suspend stub is rebuilt from its source in the tree; the vendor's driver for the video codec, which wanted a prebuilt rate-control library, is replaced by Datel OS's own code.
+**Everything from source, no blobs.** The only binaries in the image are the Wi-Fi chip firmware and its calibration data. The vendor's driver for the video codec, which wanted a prebuilt rate-control library, is replaced by Datel OS's own code.
 
 **FPU ABI.** The XBurst2 FPU has 64-bit registers and only the NaN 2008 encoding. The poky tune `mips32r2el` builds the o32 FP32 ABI with legacy NaN, which the kernel then emulates instruction by instruction; the first print died of it. Datel OS therefore has its own tune `mips32r2el-fp64` and gcc with `--with-fp-32=64 --with-nan=2008`, the same ABI as the stock userspace. Changing it means rebuilding the whole userspace.
 
