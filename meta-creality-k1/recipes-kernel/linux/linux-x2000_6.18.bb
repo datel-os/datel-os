@@ -1,6 +1,7 @@
 SUMMARY = "Linux 6.18 for the Creality K1 (Ingenic X2000)"
 DESCRIPTION = "kernel.org's stable Linux 6.18 with what the K1's board needs, from \
-zales/k1-linux: the X2000 platform and its drivers carried over from Ingenic's SDK kernel, \
+zales/k1-linux: the X2000's platform, clocks, timer and interrupt controller carried over \
+from Ingenic's SDK kernel, upstream's drivers for its other devices with the X2000 added, \
 the board's device tree, and the driver for the Helix codec (/dev/helix)."
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
@@ -9,9 +10,9 @@ inherit kernel
 
 # main of zales/k1-linux. Everything reaches that branch through pull requests,
 # and each of them says what it was checked with on the printer; the commit
-# here is the merge of pull request 13 (runtime power management).
+# here is the merge of pull request 24 (the SD hosts on upstream's driver).
 SRC_URI = "git://github.com/zales/k1-linux.git;protocol=https;branch=main"
-SRCREV = "2c0586a5a7cfff843e2e38360a5825146f232e7e"
+SRCREV = "f625d98468cf85f9447ac757e81822272c991581"
 S = "${WORKDIR}/git"
 
 LINUX_VERSION = "6.18.63"
