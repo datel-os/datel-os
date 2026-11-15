@@ -41,7 +41,24 @@ IMAGE_INSTALL += "k1os-stream"
 IMAGE_ROOTFS_EXTRA_SPACE = "0"
 
 # The stock bootloader passes init=/linuxrc on the kernel command line.
+# (The names in ROOTFS_POSTPROCESS_COMMAND stand without a semicolon: with one
+# the command still runs, but its text is no longer part of do_rootfs's
+# signature and a change to it would not make the image anew.)
 k1os_linuxrc() {
     ln -sf /sbin/init ${IMAGE_ROOTFS}/linuxrc
 }
-ROOTFS_POSTPROCESS_COMMAND += "k1os_linuxrc;"
+ROOTFS_POSTPROCESS_COMMAND += "k1os_linuxrc"
+
+# /etc/os-release names the day the image was made (BUILD_ID). The os-release
+# package cannot carry it: a date among its fields is part of its task's
+# signature, and bitbake ends a build with "the metadata is not deterministic"
+# when it parsed the recipe on one day and looks at it again on another. So
+# the day is written here, when the root file system is put together, and
+# DATE is kept out of this task's signature: the image is made anew when
+# something in it changes, not when the day does.
+k1os_build_id() {
+    sed -i '/^BUILD_ID=/d' ${IMAGE_ROOTFS}${nonarch_libdir}/os-release
+    echo 'BUILD_ID="${DATE}"' >> ${IMAGE_ROOTFS}${nonarch_libdir}/os-release
+}
+k1os_build_id[vardepsexclude] = "DATE"
+ROOTFS_POSTPROCESS_COMMAND += "k1os_build_id"
