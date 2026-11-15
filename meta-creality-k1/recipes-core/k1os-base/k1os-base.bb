@@ -12,6 +12,7 @@ SRC_URI = "file://after-volatile-lib.conf file://usr-data.mount file://k1os-data
            file://k1os-health file://k1os-health.service file://k1os-health.timer file://10-k1os-journald.conf \
            file://k1os-zram-swap file://k1os-zram-swap.service file://60-k1os-memory.conf file://k1os-memory-tmpfiles.conf \
            file://k1os-seed-webcam file://k1os-seed-webcam.service"
+SRC_URI += "file://k1os-htop.sh"
 S = "${WORKDIR}"
 
 inherit systemd allarch
@@ -52,6 +53,7 @@ do_install() {
         install -d ${D}${sysconfdir}/systemd/system/$u.d
         install -m 0644 ${WORKDIR}/after-volatile-lib.conf ${D}${sysconfdir}/systemd/system/$u.d/10-after-volatile-lib.conf
     done
+    install -D -m 0644 ${WORKDIR}/k1os-htop.sh ${D}${sysconfdir}/profile.d/k1os-htop.sh
 }
 
 FILES:${PN} += "${systemd_system_unitdir} /usr/data"

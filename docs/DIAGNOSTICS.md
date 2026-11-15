@@ -120,4 +120,4 @@ Tested by a process that takes 8 MB a second: it was killed after 19 s, the prin
 
 ## A look at the processes
 
-`htop` is in the image. Over SSH it shows what each process takes of the two CPUs and of the memory at this moment; `H` lists the threads of a process one by one. The health line and the flight recorder say what happened earlier, `htop` what happens now.
+`htop` is in the image. Over SSH it shows what each process takes of the two CPUs and of the memory at this moment; `H` lists the threads of a process one by one. The health line and the flight recorder say what happened earlier, `htop` what happens now. Its settings are kept in `/usr/data/k1os/htoprc` (`HTOPRC`, set at login), because root's home directory is on the read-only root file system.
