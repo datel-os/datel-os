@@ -56,7 +56,9 @@ Datel OS boots as a trial. Its first step, before any file system is mounted, po
 ssh root@<ip> k1os-slot keep
 ```
 
-`k1os-slot status` shows the running slot, the next boot and whether keep is set; `k1os-slot release` undoes it. The keep flag lives in `/usr/data`, which both slots share, so a later update into the other slot inherits it.
+`k1os-slot status` shows the running slot, the next boot and whether keep is set; `k1os-slot release` undoes it. The keep is the slot's own: `/usr/data/k1os/boot-keep` holds the name of the slot that was kept, so a later update into the other slot starts as a trial again and needs its own `k1os-slot keep`. (Up to 0.8.1 the file only had to exist and the next system inherited it; such a file keeps the old system and no newer one.)
+
+While `tools/flash-slot2.sh --write` writes a slot, the first block of its kernel and of its system is zero, and the trial boot does not point the marker at such a slot: if the write breaks off, the running system stays the next boot, and `k1os-slot status` says that the other slot holds no system. Run `--write` again. A Datel OS up to 0.8.1 in the running slot does not make this check.
 
 What the trial boot does not cover: a kernel that hangs before the first service, for example because of the device tree. Then every boot goes to the new slot and only the USB mask-ROM boot swaps the marker back, see [Recovery](#recovery).
 
@@ -81,7 +83,7 @@ followed by `--switch` and a reboot. `SLOT=` names the target; the script refuse
 ## Going back to stock
 
 - While stock is still in the other slot: power the printer off and on before `k1os-slot keep` was run, or `k1os-slot release` and reboot afterwards. Stock reflashes the MCU firmware itself.
-- When both slots hold Datel OS: write the backed-up partitions back from the running Datel OS into the other slot (`ssh root@<ip> "dd of=/dev/mmcblk0p5" < mmcblk0p5.bin`, the same for p7), then `k1os-slot release` and reboot.
+- When both slots hold Datel OS: write the backed-up kernel and system back from the running Datel OS into the other slot, then `k1os-slot release` and reboot. `k1os-slot status` names the running slot; never write that one. Running from slot 2 (`ota:kernel2`) the other slot is `mmcblk0p5` and `mmcblk0p7`: `ssh root@<ip> "dd of=/dev/mmcblk0p5" < mmcblk0p5.bin`, the same for p7. Running from slot 1 (`ota:kernel`) it is `mmcblk0p6` and `mmcblk0p8`, with the same two backup files (stock started from slot 2 has not been tried here).
 
 ## Recovery
 

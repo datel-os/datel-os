@@ -8,7 +8,7 @@ SRC_URI = "file://after-volatile-lib.conf file://usr-data.mount file://k1os-data
            file://k1os-wifi.service file://80-wlan.network file://guppyscreen-restart \
            file://k1os-wpa_supplicant.conf file://k1os-wifi-modprobe.conf \
            file://serial-autologin.conf file://k1os-wifi-mac \
-           file://k1os-slot file://k1os-trial-boot.service file://k1os-slot-confirm.service \
+           file://k1os-slot file://k1os-slot-test.sh file://k1os-trial-boot.service file://k1os-slot-confirm.service \
            file://k1os-bootlog.service file://k1os-bootlog.timer file://10-watchdog.conf file://k1os-logstream.service \
            file://k1os-health file://k1os-health.service file://k1os-health.timer file://10-k1os-journald.conf \
            file://k1os-zram-swap file://k1os-zram-swap.service file://60-k1os-memory.conf file://k1os-memory-tmpfiles.conf \
@@ -20,6 +20,12 @@ inherit systemd allarch
 
 SYSTEMD_SERVICE:${PN} = "usr-data.mount k1os-datadir.service k1os-wifi.service \
                          k1os-trial-boot.service k1os-slot-confirm.service k1os-bootlog.timer k1os-seed-webcam.service k1os-logstream.service k1os-health.timer k1os-zram-swap.service"
+
+# k1os-slot decides which system the next power-up starts: its test runs
+# against files in place of the eMMC, on the build host.
+do_compile() {
+    sh ${WORKDIR}/k1os-slot-test.sh ${WORKDIR}/k1os-slot
+}
 
 do_install() {
     install -d ${D}${systemd_system_unitdir} ${D}/usr/data ${D}${libexecdir}/k1os ${D}${sysconfdir}/k1os

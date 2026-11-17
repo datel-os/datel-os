@@ -17,8 +17,17 @@
 # connected, or it is stock firmware without Moonraker. IDLE=1 says that no
 # print is running and lets the write go on then.
 #
-# Datel OS boots as a trial: its first step points the marker back at slot 1,
-# so a power cycle returns to stock until you run "k1os-slot keep" on it.
+# Datel OS boots as a trial: its first step points the marker back at the
+# slot it was written from, so a power cycle returns to the previous system
+# until you run "k1os-slot keep" on the new one. That holds for every new
+# system: boot-keep names the slot that was kept, and a keep that names the
+# slot written here is removed with the system it was said about.
+#
+# While a slot is written it holds no system, and says so: the first 4 KiB of
+# its kernel and of its rootfs are zeroed before the write and put in last,
+# after the rest was read back. Datel OS's trial boot never points the marker
+# at a slot whose kernel or rootfs starts with a zero block, so a write that
+# broke off cannot become the next boot.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -61,6 +70,15 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 pad4k "$KERNEL" "$TMP/kernel"; pad4k "$ROOTFS" "$TMP/rootfs"
 KS=$(stat -f %z "$TMP/kernel"); RS=$(stat -f %z "$TMP/rootfs")
 KM=$(md5of "$TMP/kernel"); RM=$(md5of "$TMP/rootfs")
+# Each image in two parts: the first 4 KiB block, written last, and the rest.
+split4k() {
+    dd if="$1" of="$1.head" bs=4096 count=1 2>/dev/null
+    dd if="$1" of="$1.body" bs=4096 skip=1 2>/dev/null
+    [ "$(tr -d '\000' < "$1.head" | wc -c)" -gt 0 ] || die "$1 starts with a zero block; it would read as an empty slot"
+}
+[ "$KS" -ge 8192 ] && [ "$RS" -ge 8192 ] || die "kernel or rootfs is shorter than two blocks"
+split4k "$TMP/kernel"; split4k "$TMP/rootfs"
+KBM=$(md5of "$TMP/kernel.body"); RBM=$(md5of "$TMP/rootfs.body")
 
 echo "== printer state"
 STATE=$("${SSH[@]}" '
@@ -99,9 +117,11 @@ echo "== images (slot $SLOT)"
 echo "kernel  $KS B  md5 $KM  -> $KDEV"
 echo "rootfs  $RS B  md5 $RM  -> $RDEV"
 
-verify() {  # $1 dev, $2 size, $3 md5
-    local got
-    got=$("${SSH[@]}" "dd if=$1 bs=4096 count=$(( $2 / 4096 )) 2>/dev/null | md5sum | cut -d' ' -f1")
+# The read-back is to come from the eMMC, not from the pages the write left in
+# memory, so those are dropped first (where the kernel lets us).
+verify() {  # $1 dev, $2 size, $3 md5, $4 blocks to skip (0: the whole image)
+    local got skip="${4:-0}"
+    got=$("${SSH[@]}" "sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; dd if=$1 bs=4096 skip=$skip count=$(( $2 / 4096 - skip )) 2>/dev/null | md5sum | cut -d' ' -f1")
     [ "$got" = "$3" ] || die "$1 read-back md5 $got != $3"
     echo "$1 verified ($got)"
 }
@@ -110,12 +130,28 @@ case "$MODE" in
 check)
     echo "== check only, nothing written. Next: $0 --write" ;;
 --write)
+    echo "== slot $SLOT holds no system from here on (first block of $KDEV and $RDEV zeroed)"
+    "${SSH[@]}" "
+      set -e
+      k=/usr/data/k1os/boot-keep
+      if [ \"\$(head -n 1 \$k 2>/dev/null)\" = $MARK_TO ]; then rm -f \$k; echo 'boot-keep named slot $SLOT: removed'; fi
+      dd if=/dev/zero of=$KDEV bs=4096 count=1 2>/dev/null
+      dd if=/dev/zero of=$RDEV bs=4096 count=1 2>/dev/null
+      sync"
     echo "== writing kernel ($KDEV)"
-    "${SSH[@]}" "dd of=$KDEV bs=4096 2>/dev/null; sync" < "$TMP/kernel"
-    verify "$KDEV" "$KS" "$KM"
+    "${SSH[@]}" "dd of=$KDEV bs=4096 seek=1 2>/dev/null; sync" < "$TMP/kernel.body"
+    verify "$KDEV" "$KS" "$KBM" 1
     echo "== writing rootfs ($RDEV), about a minute"
-    "${SSH[@]}" "dd of=$RDEV bs=4096 2>/dev/null; sync" < "$TMP/rootfs"
-    verify "$RDEV" "$RS" "$RM"
+    "${SSH[@]}" "dd of=$RDEV bs=4096 seek=1 2>/dev/null; sync" < "$TMP/rootfs.body"
+    verify "$RDEV" "$RS" "$RBM" 1
+    echo "== first blocks: slot $SLOT holds a system again"
+    "${SSH[@]}" "dd of=$RDEV bs=4096 count=1 2>/dev/null; sync" < "$TMP/rootfs.head"
+    "${SSH[@]}" "dd of=$KDEV bs=4096 count=1 2>/dev/null; sync" < "$TMP/kernel.head"
+    if ! (verify "$KDEV" "$KS" "$KM" && verify "$RDEV" "$RS" "$RM"); then
+        "${SSH[@]}" "dd if=/dev/zero of=$KDEV bs=4096 count=1 2>/dev/null; dd if=/dev/zero of=$RDEV bs=4096 count=1 2>/dev/null; sync" ||
+            echo "could not mark slot $SLOT as empty again" >&2
+        die "slot $SLOT does not read back as written; it is marked as holding no system"
+    fi
     echo "== SSH key for Datel OS (/usr/data/k1os/ssh/authorized_keys)"
     "${SSH[@]}" 'mkdir -p /usr/data/k1os/ssh && chmod 700 /usr/data/k1os/ssh && k=$(cat) &&
       { grep -qxF "$k" /usr/data/k1os/ssh/authorized_keys 2>/dev/null || echo "$k" >> /usr/data/k1os/ssh/authorized_keys; } &&

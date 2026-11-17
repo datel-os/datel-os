@@ -54,7 +54,7 @@ zklippy is GPL-3.0 and its repository stays private, so every release carries zk
 
 **FPU ABI.** The XBurst2 FPU has 64-bit registers and only the NaN 2008 encoding. The poky tune `mips32r2el` builds the o32 FP32 ABI with legacy NaN, which the kernel then emulates instruction by instruction; the first print died of it. Datel OS therefore has its own tune `mips32r2el-fp64` and gcc with `--with-fp-32=64 --with-nan=2008`, the same ABI as the stock userspace. Changing it means rebuilding the whole userspace.
 
-**Trial boot.** The stock SPL selects the slot by the text in `mmcblk0p1` and has no boot counter. `k1os-trial-boot.service` points the marker at the other slot before file systems are mounted; `k1os-slot-confirm.service` points it back once `/usr/data` is up and `/usr/data/k1os/boot-keep` exists. See `recipes-core/k1os-base/files/k1os-slot`.
+**Trial boot.** The stock SPL selects the slot by the text in `mmcblk0p1` and has no boot counter. `k1os-trial-boot.service` points the marker at the other slot before file systems are mounted; `k1os-slot-confirm.service` points it back once `/usr/data` is up and `/usr/data/k1os/boot-keep` names the running slot. A slot whose kernel or system starts with a zero block (one that `tools/flash-slot2.sh` is writing) is never made the next boot. See `recipes-core/k1os-base/files/k1os-slot`; `k1os-slot-test.sh` beside it runs at build time.
 
 **Helix video codec.** The X2000 has a hardware H.264/JPEG encoder and JPEG decoder (Helix) and an H.264 decoder (Felix, not used). The vendor's V4L2 driver is not used: it read JPEG headers in the kernel without checking a length, and one damaged camera frame stopped the SoC. Datel OS splits the work in two.
 

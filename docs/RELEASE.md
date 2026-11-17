@@ -110,7 +110,7 @@ KERNEL=dl/datel-os-v0.3.0-xImage ROOTFS=dl/datel-os-v0.3.0-rootfs.squashfs PRINT
 
    From a running Datel OS into the other slot add `SLOT=1` or `SLOT=2` (the one the printer is not running from; the script checks this and refuses to write into the running one). Without `--write` the script only checks and writes nothing.
 
-3. Restart (from stock power off and on, from Datel OS a `reboot` is enough). The new system comes up in trial mode: the first thing after start points the marker in p1 at the other slot, so a hang or a power cycle brings the previous system back. Once you are happy, run `k1os-slot keep` on the printer; `k1os-slot status` shows where it runs from and where the next boot goes. If `keep` is already in effect from before, the new slot inherits it (the `boot-keep` file lives in `/usr/data`, shared by both slots).
+3. Restart (from stock power off and on, from Datel OS a `reboot` is enough). The new system comes up in trial mode: the first thing after start points the marker in p1 at the other slot, so a hang or a power cycle brings the previous system back. Once you are happy, run `k1os-slot keep` on the printer; `k1os-slot status` shows where it runs from and where the next boot goes. A `keep` from before belongs to the slot it was said in (`boot-keep` holds that slot's name), so every new system starts as a trial.
 
 4. On the first start after a warm restart from stock into Datel OS the main MCU stays in shutdown and Klipper reports a configuration error; one `FIRMWARE_RESTART` sorts it out. Between two Datel OS slots this does not happen.
 
