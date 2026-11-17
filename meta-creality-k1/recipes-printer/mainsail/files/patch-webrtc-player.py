@@ -10,6 +10,7 @@ Stops with an error when the release is not the one the methods were written
 for: a new Mainsail needs a new look at its player first."""
 import hashlib
 import pathlib
+import re
 import sys
 
 PLAYER = "assets/WebrtcCameraStreamer-CoCX5QFo.js"
@@ -28,6 +29,11 @@ def once(text, old, new, what):
 def main():
     dist = pathlib.Path(sys.argv[1])
     methods = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+    # The release is lowered below ES2020 and the methods go in as they are:
+    # one "?." or "??" and a browser from before 2020 cannot load the player.
+    code = re.sub(r"/\*.*?\*/", "", methods, flags=re.S)
+    if re.search(r"\?\.(?=[A-Za-z_$\[(])|\?\?", code):
+        sys.exit("patch-webrtc-player: webrtc-player.js uses ?. or ??, which the release build does not")
 
     player = dist / PLAYER
     text = player.read_text(encoding="utf-8")
