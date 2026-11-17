@@ -92,6 +92,7 @@ Images land in the volume under `build/tmp/deploy/images/creality-k1/`; `TAG=vX.
 | Document | Contents |
 |---|---|
 | [docs/INSTALL.md](docs/INSTALL.md) | Backup, flashing, trial boot, both slots, going back to stock, recovery |
+| [docs/BOOTLOADER.md](docs/BOOTLOADER.md) | How the stock bootloader starts the printer, and an open one with a boot counter that is built but has not run yet |
 | [docs/KALICO.md](docs/KALICO.md) | The Klipper host (zklippy) and the MCU firmware: configuration conversion, probe and input shaper calibration, fans |
 | [docs/CAMERA.md](docs/CAMERA.md) | Camera settings, OrcaSlicer, timelapse |
 | [docs/TWITCH.md](docs/TWITCH.md) | Twitch live stream: setup, Mainsail dialog, overlay, automatic title |

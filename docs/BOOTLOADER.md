@@ -1,218 +1,154 @@
-# Otevřený bootloader pro K1 (větev `feat/uboot`)
+# An open bootloader for the K1
 
-Stav 7. 11. 2026: recept `u-boot-k1` se přeloží, výsledek je zkontrolovaný proti
-stock bootloaderu bajt po bajtu tam, kde to jde, ale **na tiskárně ještě neběžel**.
-Do eMMC se v téhle větvi nic nezapisuje; první zkouška je start z RAM přes USB
-(níže), zápis do eMMC je samostatný krok ke schválení.
+State on 17 November 2026: the recipe `u-boot-k1` builds on today's `main`, and its output is checked against the stock bootloader byte for byte where that is possible. **It has never run on a printer.** Nothing here writes to the eMMC: the first test is a start from RAM over USB (below), and writing it to the eMMC is a separate step that waits for a decision.
 
-## Odkud je zdroj a pod jakou licencí
+What it is for: the stock SPL has no boot counter, so a kernel that hangs before the first service is started again on every power-up, and only the USB mask-ROM boot gets the printer back ([Limitations](../README.md#limitations), number 2). This bootloader counts the boots of a new slot and returns to the other one by itself.
 
-| Co | Odkud | Licence |
+## Source and licence
+
+| What | Where from | Licence |
 |---|---|---|
-| U-Boot 2013.07 pro Ingenic X2000 (SPL i U-Boot) | [NebulaOS-KE/NebulaOS-kernel](https://github.com/NebulaOS-KE/NebulaOS-kernel), adresář `u-boot/`, stejný commit `d86790d2` jako naše jádro; adresář se od prvního commitu repozitáře (21. 12. 2025, „initial release“ Ingenic SDK) nezměnil | GPL-2.0 (`COPYING`) |
-| Deska K1 (`board/ingenic/creality_k1`, `include/configs/creality_k1.h`, příkaz `k1slot`) | vlastní, v `meta-creality-k1/recipes-bsp/u-boot-k1/files` | GPL-2.0 |
-| Nástroj pro USB start [ballaswag/ingenic-usbboot](https://github.com/ballaswag/ingenic-usbboot) | commit c65eaa3; jeho `spl.bin`/`uboot.bin` jsou binárky „burner_x2000“ ze stejného SDK (září 2023), bez zdroje | GPL-2.0 (usbboot.c) |
+| U-Boot 2013.07 for the Ingenic X2000 (SPL and U-Boot) | [NebulaOS-KE/NebulaOS-kernel](https://github.com/NebulaOS-KE/NebulaOS-kernel), directory `u-boot/`, commit `d86790d2`; the directory has not changed since the repository's first commit (21 December 2025, the "initial release" of Ingenic's SDK) | GPL-2.0 (`COPYING`) |
+| The K1 board (`board/ingenic/creality_k1`, `include/configs/creality_k1.h`, the `k1slot` command) | our own, in `meta-creality-k1/recipes-bsp/u-boot-k1/files` | GPL-2.0 |
+| The USB boot tool [ballaswag/ingenic-usbboot](https://github.com/ballaswag/ingenic-usbboot) | commit c65eaa3; its `spl.bin` and `uboot.bin` are the "burner_x2000" binaries of the same SDK (September 2023), without source | GPL-2.0 (`usbboot.c`) |
 
-Co se nenašlo: mainline U-Boot X2000 ani XBurst2 nezná (jen T-série přes
-OpenIPC); NebulaOS bootloader nemění; desky `k1mbv01/02/04` v Ingenic stromu
-jsou cizí deska s čipem M200, ne Creality K1.
+What was not found: mainline U-Boot knows neither the X2000 nor XBurst2 (only the T series, through OpenIPC); NebulaOS does not change the bootloader; the boards `k1mbv01/02/04` in Ingenic's tree are another company's board with an M200 chip, not the Creality K1.
 
-**Stock bootloader K1 je tentýž strom.** Prompt `x2000_base#`, hlášení
-`Board: halley5 (Ingenic XBurst2 X2000-V12 SoC)`, překlad `Apr 26 2023`
-Ingenic gcc 7.2.0. Hlavička parametrů `INGE` v sektoru 0 i v SPL je bajt po
-bajtu výstup `tools/ingenic-tools/spl_params_fixer_x2000_v12.c` (PLL 624 MHz,
-CPCCR 0x95073310). Creality do SPL přidala jen čtení oddílu `sn_mac` a parametr
-`lcm_id` (viz níže).
+Datel OS's kernel came from the same repository up to 0.5.1. It is [zales/k1-linux](https://github.com/zales/k1-linux) now, which has no bootloader, so this recipe is the only thing that still fetches the SDK tree.
 
-## Jak startuje stock a jak startuje K1 OS U-Boot
+**The stock bootloader of the K1 is the same tree.** The prompt `x2000_base#`, the line `Board: halley5 (Ingenic XBurst2 X2000-V12 SoC)`, built on `Apr 26 2023` with Ingenic's gcc 7.2.0. The `INGE` parameter header in sector 0 and in the SPL is byte for byte the output of `tools/ingenic-tools/spl_params_fixer_x2000_v12.c` (PLL 624 MHz, CPCCR 0x95073310). Creality added only two things to the SPL: reading the `sn_mac` partition and the `lcm_id` parameter (below).
 
-Rozložení první MiB eMMC (ze zálohy `~/Documents/K1-zaloha-2026-11-05`):
+## How stock starts and how this bootloader starts
 
-| Bajty | Sektory | Obsah |
+The first MiB of the eMMC (from the backup `~/Documents/K1-zaloha-2026-11-05`):
+
+| Bytes | Sectors | Contents |
 |---|---|---|
-| 0x0000–0x01FF | 0 | 256 B parametrů `INGE` pro boot ROM + ochranný MBR |
-| 0x0200–0x43FF | 1–33 | GPT (10 oddílů `ota` … `userdata`, pro bootloader žádný) |
-| 0x4400–0xA3FF | 34–81 | SPL: hlavička `MSPL` + počet bloků, parametry na +0x100, kód od +0x800 (běží v TCSM na 0xb2401000), zarovnáno na 24 KiB |
-| 0xA400– | 82– | U-Boot (`CONFIG_SYS_TEXT_BASE` 0x80100000), stock 167 KB, náš 135 KB |
-| 0x6A400–0x723FF | 850–913 | prostředí U-Bootu, 32 KiB; na stock tiskárně samé nuly |
+| 0x0000–0x01FF | 0 | 256 bytes of `INGE` parameters for the boot ROM, and the protective MBR |
+| 0x0200–0x43FF | 1–33 | GPT (10 partitions, `ota` to `userdata`; none for the bootloader) |
+| 0x4400–0xA3FF | 34–81 | SPL: the `MSPL` header and block count, parameters at +0x100, code from +0x800 (runs in TCSM at 0xb2401000), padded to 24 KiB |
+| 0xA400– | 82– | U-Boot (`CONFIG_SYS_TEXT_BASE` 0x80100000); stock 170 049 bytes, ours 133 496 |
+| 0x6A400–0x723FF | 850–913 | U-Boot's environment, 32 KiB; all zeros on a stock printer |
 
-**Stock:** boot ROM → SPL → SPL sám přečte značku v `ota` (p1), nahraje RTOS
-daného slotu (p3/p4, 500 KiB na 0x86000000), do jeho haldy zkopíruje oddíl
-`sn_mac`, spustí RTOS na druhém jádru XBurst2, počká, až RTOS přepíše první
-slovo svého obrazu (hotovo), přečte z něj `lcm_id`, druhé jádro resetuje, nahraje
-`xImage` ze slotu (uImage, load = entry = 0x80F00000) a skočí do něj s argv
-`{0, cmdline}`. Plný U-Boot v sektoru 82 se při normálním startu **nikdy
-nespustí** (`bootcmd` prázdný); slouží jen cloneru. Žádné počítadlo, žádný
-návrat.
+**Stock:** boot ROM → SPL. The SPL itself reads the marker in `ota` (p1), loads the RTOS of that slot (p3 or p4, 500 KiB at 0x86000000), copies the `sn_mac` partition into the RTOS's heap, starts the RTOS on the second XBurst2 core, waits until the RTOS overwrites the first word of its image (done), reads `lcm_id` from it, resets the second core, loads the slot's `xImage` (a legacy U-Boot image, load = entry = 0x80F00000) and jumps into it with argv `{0, cmdline}`. The full U-Boot in sector 82 **never runs** in a normal start (`bootcmd` is empty); it is there for Ingenic's cloner. No counter, no way back.
 
-**`lcm_id`:** z disassembleru stock SPL: RTOS po detekci panelu zapíše číslo
-panelu do slova, na které ukazuje položka `mapped_rtosdata_size` v hlavičce
-RTOS (0x86085400 pro `rtos`); SPL si hodnotu zapamatuje před startem RTOS,
-po jeho skončení ji porovná a změněnou hodnotu dá do `lcm_id=`. Když RTOS nic
-nenapíše, stock předá `lcm_id=0`.
+**`lcm_id`**, from the disassembly of the stock SPL: after detecting the panel the RTOS writes the panel's number into the word that `mapped_rtosdata_size` in the RTOS header points at (0x86085400 for `rtos`). The SPL remembers that word before it starts the RTOS, compares it afterwards and puts a changed value into `lcm_id=`. When the RTOS writes nothing, stock passes `lcm_id=0`.
 
-**K1 OS U-Boot:** boot ROM → SPL (stejný kód SDK, deska `creality_k1`: msc0
-8 bitů, vestavěná tabulka oddílů K1, RTOS jako stock včetně `sn_mac` a čtení
-`lcm_id`, které uloží na 0xa0000f00 jako `"K1LC", id`) → U-Boot ze sektoru 82
-→ `bootcmd=run k1_boot`:
+**This bootloader:** boot ROM → SPL (the same SDK code with the board `creality_k1`: msc0 with 8 bits, the K1's partition table built in, the RTOS as stock does it, with `sn_mac` and with `lcm_id`, which it leaves at 0xa0000f00 as `"K1LC", id`) → U-Boot from sector 82 → `bootcmd=run k1_boot`:
 
 ```
-k1slot select                 # značka v p1 + počítadlo -> k1_slot, k1_root, k1_mem, k1_lcm
-k1slot load ${loadaddr}       # xImage slotu na 0x81000000, při vadné hlavičce/CRC druhý slot
+k1slot select                 # marker in p1 + counter -> k1_slot, k1_root, k1_mem, k1_lcm
+k1slot load ${loadaddr}       # the slot's xImage to 0x81000000; the other slot on a bad header or CRC
 setenv bootargs console=${k1_console} mem=${k1_mem} lcm_id=${k1_lcm} init=/linuxrc \
        root=/dev/mmcblk0p${k1_root} rootwait rootfstype=squashfs ro ${k1_extra_args}
 bootm ${loadaddr}
 ```
 
-Výsledná příkazová řádka jádra je stejná jako ze stock SPL (`console=ttyS2,115200n8
-mem=256M@0x0 lcm_id=3 init=/linuxrc root=/dev/mmcblk0p7|8 rootwait rootfstype=squashfs ro`),
-takže z ní startuje jak stock jádro 4.4, tak K1 OS 6.6. `k1_lcm_id=auto` bere
-hodnotu od RTOS, při 0 výchozí `k1_lcm_default` (3, panel téhle tiskárny);
-pevné číslo v `k1_lcm_id` má přednost. Výsledek je v běhové proměnné `k1_lcm`.
+The kernel command line is the one the stock SPL passes (`console=ttyS2,115200n8 mem=256M@0x0 lcm_id=3 init=/linuxrc root=/dev/mmcblk0p7|8 rootwait rootfstype=squashfs ro`), so the stock kernel 4.4 and Datel OS's kernel start from it alike. Datel OS's `xImage` has the same header as stock's: an uncompressed image with load and entry address 0x80F00000 (read from the header of the 6.18.63 image of 17 November 2026). `k1_lcm_id=auto` takes the RTOS's value and, when that is 0, `k1_lcm_default` (3, this printer's panel); a fixed number in `k1_lcm_id` goes first. The result is in the run-time variable `k1_lcm`.
 
-Co proti stocku přibylo:
+What it adds to stock:
 
-- **Počítadlo startů.** Proměnné `k1_trial`, `k1_bootcount`, `k1_bootlimit` (3).
-  Při `k1_trial=1` každý start zvýší `k1_bootcount` a uloží prostředí; po
-  překročení limitu U-Boot přepíše značku v p1 na druhý slot, `k1_trial` smaže
-  a startuje odtamtud. Počítadlo nuluje `k1os-slot confirm` (každý úspěšný start
-  K1 OS) přes `fw_setenv` (`libubootenv`, `/etc/fw_env.config`). Zapíná ho
-  `k1os-slot arm` po přepnutí značky na slot s K1 OS, nebo `k1slot marker 1|2`
-  z konzole. Stock nic nepotvrzuje, proto se počítadlo pro přepnutí na stock
-  nezapíná a bez `k1_trial=1` se nic nepočítá; stock tak startuje jako dřív.
-- **Konzole.** 1 s `Hit any key to stop autoboot`, hush shell, `mmc`, `md`,
-  `loadb`, `k1slot status|marker|confirm`, `saveenv`. Zotavení bez USB: kabel
-  na J1 a `k1slot marker 1`.
-- **Záchrana proti prázdnému prostředí.** První start uloží vestavěné výchozí
-  prostředí (`k1_env_saved=1`), a i kdyby uživatelský nástroj zapsal prostředí
-  bez `bootcmd`, U-Boot použije zakompilovaný (patch `0002`).
-- **Časový limit na RTOS.** Stock čeká na signál RTOS donekonečna; náš SPL
-  po 10 s pokračuje bez něj.
+- **A boot counter.** The variables `k1_trial`, `k1_bootcount` and `k1_bootlimit` (3). While `k1_trial=1`, every start raises `k1_bootcount` and saves the environment; past the limit U-Boot points the marker in p1 at the other slot, clears `k1_trial` and starts from there. See the next section for who arms and who clears it.
+- **A console.** One second of `Hit any key to stop autoboot`, the hush shell, `mmc`, `md`, `loadb`, `k1slot status|marker|confirm`, `saveenv`. Recovery without USB: a cable on J1 and `k1slot marker 1`.
+- **A net under an empty environment.** The first start saves the built-in defaults (`k1_env_saved=1`), and even if a tool in Linux wrote an environment without `bootcmd`, U-Boot uses the compiled-in one (patch `0002`).
+- **A time limit for the RTOS.** Stock waits for the RTOS's signal for ever; our SPL goes on without it after 10 s.
+- **A slot that is being written is never started.** `tools/flash-slot2.sh` zeroes the first 4 KiB of a slot's kernel while it writes; `k1slot load` finds no image header there and loads the other slot.
 
-## Co recept staví
+## The counter and Datel OS's trial boot
 
-`meta-creality-k1/recipes-bsp/u-boot-k1/u-boot-k1_2013.07.bb` (součást
-`bitbake k1-image` přes `EXTRA_IMAGEDEPENDS`, vypne `K1OS_BUILD_UBOOT = "0"`).
-Výstup v `tmp/deploy/images/creality-k1/`:
+Datel OS already boots as a trial without this bootloader ([INSTALL.md](INSTALL.md#trial-boot-and-keeping-a-slot)): its first service points the marker back at the other slot, and `k1os-slot keep` makes the new slot stay. That protects from the first service on. The counter covers what is before it, a kernel that never gets that far. The two do not depend on each other.
 
-| Soubor | Co to je |
+| Who | What it does with the counter |
 |---|---|
-| `u-boot-k1-spl.bin` | SPL tak, jak leží od sektoru 34 (hlavička `MSPL`, parametry, kód), 18 040 B |
-| `u-boot-k1.bin` | U-Boot, sektor 82; zároveň stage 2 pro usbboot |
-| `u-boot-k1-with-spl.bin` | SPL doplněný na 24 KiB + U-Boot = bajty 0x4400– eMMC |
-| `u-boot-k1-sector0.bin` | sektor 0: parametry boot ROM + ochranný MBR (shodný se stock) |
-| `u-boot-k1-mbr-gpt.bin` | celá první MiB, jak ji skládá SDK; GPT má nové GUID, **nikdy nezapisovat** na stock eMMC |
-| `u-boot-k1-usb-stage1.bin` | SPL přeložený s `RUN_FIRMWARE_VIA_USB_BOOT`: po inicializaci DDR se vrátí do boot ROM (stage 1 pro usbboot), 12 292 B |
+| `tools/flash-slot2.sh --switch` | after pointing the marker at the new slot it runs `k1os-slot arm` on the printer: `k1_bootcount=0`, `k1_trial=1` |
+| `k1os-slot arm` | the same by hand, for the slot the marker names |
+| U-Boot, every start with `k1_trial=1` | counts; at the fourth start of a slot that never confirmed it writes the other slot into the marker |
+| `k1os-slot confirm` (every Datel OS boot, once `/usr/data` is up) and `k1os-slot keep` | `k1_trial=0`, `k1_bootcount=0`. It writes only when one of them is set |
+| `k1slot marker 1\|2` on the console | sets the marker and arms the counter |
 
-Konfigurace `creality_k1` v `boards.cfg`: `SPL_JZMMC_SUPPORT, ENV_IS_IN_MMC,
-GPT_CREATOR, JZ_MMC_MSC0, SPL_PARAMS_FIXER`; `creality_k1_usb` navíc
-`RUN_FIRMWARE_VIA_USB_BOOT`. Překlad gcc 13 z vrstvy (`-msoft-float`), hostitelské
-nástroje SDK (`gpt_creator`, `spl_params_fixer`, `ddr_params_creator`) nativním gcc.
-Patche: `0001` výběr `rtos`/`rtos2` podle značky i bez `SPL_OS_OTA_BOOT`, čtení
-`lcm_id` od RTOS a limit čekání; `0002` náhradní `bootcmd`.
+With the stock bootloader the environment area is zero, `fw_printenv` reports a bad CRC, and `k1os-slot` does all of the above by the marker alone; `k1os-slot status` says `u-boot:  stock (no environment)`. The script's test (`k1os-slot-test.sh`, run by the recipe on the build host) covers both cases with stand-ins for `fw_printenv` and `fw_setenv`.
 
-## Co je ověřené bez tiskárny
+**Never arm the counter for the stock slot.** Stock firmware confirms nothing, so after three starts the bootloader would send the printer back. `k1os-slot release` therefore does not arm it. Without `k1_trial=1` nothing is counted and stock starts as it always did.
 
-Porovnání obrazu z bitbake (gcc 13 z vrstvy) se zálohou stock bootloaderu,
-build 7. 11. 2026:
+What nobody presses a button for: a kernel that hangs before the first service does not restart by itself, because nothing has started the watchdog yet. The counter needs the three starts to come from somewhere, today from the power switch.
 
-- sektor 0 (parametry `INGE` i MBR) **shodný**; hlavička SPL `MSPL` + 36 bloků
-  a 256 B parametrů na +0x100 **shodné**, prvních 64 B kódu SPL také (stejný
-  `start.S`); GPT vygenerovaná z naší
-  `partitions.tab` má stejných 10 oddílů se stejnými sektory jako stock.
-- tabulka DDR (`supported_ddr_reg_values`, tři čipy W97BV6MK, W63AH6NKB-BI,
-  NK6CL256M16DKX-H1) má stejné časování, mapování i velikosti; stock verze
-  struktury je o 28 B kratší (bez polí `phy_drvodt`/`phy_deskew`, které novější
-  SDK přidalo s příznakem „nepoužít“). Lišily se tři hodnoty: `MR11` LPDDR3
-  (stock 0x02 = DQ ODT RZQ/2, SDK 0 = vypnuto; recept nastavuje stock hodnotu,
-  s ní je deska odladěná), `DDRC_CTRL` bit 15 (`ACTPD`: stock nechává banky
-  otevřené při power-down, SDK je předem uzavře; ponecháno SDK) a `DDRC_REFCNT`
-  bit 1 u LPDDR3 (dělička čítače obnovy: stock 1, SDK 0 při stejné konstantě
-  0xb6; nižší dělička = obnova nejméně stejně častá jako u stocku, ponecháno SDK).
-- SPL 18 040 B < 24 KiB, U-Boot 133 KB < 384 KiB (prostředí začíná na 384 KiB); recept
-  obě meze kontroluje a při překročení build zastaví.
+## What the recipe builds
 
-Neověřené: vše za běhu. Konkrétně inicializace DDR na této desce S12, čtení
-eMMC v SPL i v U-Bootu (SDHCI ovladač SDK běží na 1 nebo 4 bity podle
-schopností řadiče), start RTOS a hodnota `lcm_id`, `bootm` K1 OS jádra, zápis
-prostředí, `fw_setenv` z Linuxu.
+`meta-creality-k1/recipes-bsp/u-boot-k1/u-boot-k1_2013.07.bb`, built with `./build.sh u-boot-k1`. An image build leaves it out until it has run on a printer; `K1OS_BUILD_UBOOT = "1"` builds it along with `k1-image`. Output in `build/tmp/deploy/images/creality-k1/`:
 
-## Zkouška z RAM přes USB (nic se nezapisuje)
+| File | What it is |
+|---|---|
+| `u-boot-k1-spl.bin` | the SPL as it lies from sector 34 (`MSPL` header, parameters, code), 18 024 bytes |
+| `u-boot-k1.bin` | U-Boot, sector 82; also stage 2 for usbboot |
+| `u-boot-k1-with-spl.bin` | the SPL padded to 24 KiB, then U-Boot: the eMMC's bytes from 0x4400 |
+| `u-boot-k1-sector0.bin` | sector 0: boot ROM parameters and the protective MBR (equal to stock's) |
+| `u-boot-k1-mbr-gpt.bin` | the whole first MiB as the SDK puts it together; its GPT has new GUIDs, **never write it** to a stock eMMC |
+| `u-boot-k1-usb-stage1.bin` | the SPL built with `RUN_FIRMWARE_VIA_USB_BOOT`: it returns to the boot ROM after the DDR init (stage 1 for usbboot), 12 276 bytes |
 
-Přes SSH to nejde: bootloader běží dřív než Linux a jediná cesta, jak ho
-spustit bez zápisu do eMMC, je USB boot ROM čipu (tlačítko BOOT + MicroUSB).
-Stejnou cestou vede i záchrana po nepovedeném zápisu, proto se do eMMC
-nezapisuje, dokud u tiskárny nikdo fyzicky není. Stav 7. 11. 2026: Mac
-připravený (`~/k1-usbboot/` s přeloženým usbboot a oběma soubory), zkouška
-čeká na fyzický přístup k tiskárně.
+The configuration `creality_k1` in `boards.cfg`: `SPL_JZMMC_SUPPORT, ENV_IS_IN_MMC, GPT_CREATOR, JZ_MMC_MSC0, SPL_PARAMS_FIXER`; `creality_k1_usb` adds `RUN_FIRMWARE_VIA_USB_BOOT`. Compiled by the layer's gcc 13 (`-msoft-float`); the SDK's host tools (`gpt_creator`, `spl_params_fixer`, `ddr_params_creator`) by the native gcc. Patches: `0001` picks `rtos` or `rtos2` by the marker without `SPL_OS_OTA_BOOT`, reads `lcm_id` from the RTOS and limits the wait; `0002` is the fallback `bootcmd`.
 
-Potřeba: usbboot přeložený podle `tools/usbboot/README.md`, USB-UART na J1
-(115200, GND + RX/TX; napájení z desky, 3,3 V), MicroUSB k Macu, deska v režimu
-mask-ROM (BOOT + RESET). Soubory z `tmp/deploy/images/creality-k1/` zkopírovat
-do `~/k1-usbboot/`.
+In the image, `k1os-base` installs `/etc/fw_env.config` (the environment's place) and pulls in `libubootenv-bin` for `fw_printenv` and `fw_setenv`.
+
+## What is checked without a printer
+
+The image from bitbake against the backup of the stock bootloader, build of 17 November 2026:
+
+- Sector 0 (the `INGE` parameters and the MBR) is **equal**. The SPL's first 0x800 bytes are **equal**: the `MSPL` header with 36 blocks and the 256 bytes of parameters at +0x100. So are the first 64 bytes of the SPL's code (the same `start.S`). The GPT made from our `partitions.tab` has the same 10 partitions with the same sectors as stock's.
+- The binaries say which source they are: `U-Boot 2013.07-k1-gd86790d2e`. The recipe writes that itself; left alone, the tree asks git and names the tip of the branch, which is not what bitbake unpacked. Apart from that line and the build's time they are the build of 7 November 2026.
+- The DDR table (`supported_ddr_reg_values`; three chips, W97BV6MK, W63AH6NKB-BI, NK6CL256M16DKX-H1) has the same timing, mapping and sizes; stock's version of the structure is 28 bytes shorter (without the fields `phy_drvodt` and `phy_deskew`, which a newer SDK added with a "do not use" flag). Three values differed. `MR11` of LPDDR3: stock 0x02 (DQ ODT RZQ/2), the SDK 0 (off); the recipe sets stock's value, the one the board was tuned with. `DDRC_CTRL` bit 15 (`ACTPD`): stock leaves banks open in power-down, the SDK closes them first; the SDK's is kept. `DDRC_REFCNT` bit 1 for LPDDR3 (the refresh counter's divider): stock 1, the SDK 0 with the same constant 0xb6; a lower divider refreshes at least as often as stock, so the SDK's is kept. (Compared on 7 November 2026; the board files have not changed since.)
+- The SPL fits its 24 KiB and U-Boot its 384 KiB (the environment starts at 384 KiB); the recipe checks both and stops the build when one is exceeded.
+
+Not checked: everything at run time. That is the DDR init on this S12 board, reading the eMMC in the SPL and in U-Boot (the SDK's SDHCI driver runs with 1 or 4 bits by what the controller offers), the RTOS start and the value of `lcm_id`, `bootm` of Datel OS's kernel, saving the environment, and `fw_setenv` from Linux.
+
+## The test from RAM over USB (writes nothing)
+
+It cannot be done over SSH: the bootloader runs before Linux, and the only way to start it without writing to the eMMC is the chip's USB boot ROM (the BOOT button and micro USB). The same way leads back after a write that went wrong, which is why nothing is written to the eMMC while nobody is at the printer.
+
+That way was used for real on this S12 board on 14 November 2026, with Ingenic's own binaries: `usbboot --uboot` and `--swap-ota` brought the printer back from a kernel that did not start. Our SPL and U-Boot have not been sent through it yet.
+
+Needed: usbboot built by [tools/usbboot/README.md](../tools/usbboot/README.md), a USB-UART adapter on J1 (115200; GND, RX and TX; the board supplies its own 3.3 V), micro USB to the computer, the board in mask-ROM mode (BOOT + RESET). Copy the files from `build/tmp/deploy/images/creality-k1/` to `~/k1-usbboot/`.
 
 ```bash
 cd ~/k1-usbboot && sudo ./usbboot --cpu x2000 --stage1 u-boot-k1-usb-stage1.bin
 ```
 
-Na konzoli má být `U-Boot SPL 2013.07 (...)`, hlášky `Current Version`, `DDR:
-... LPDDR3` a `run start1 firmware finished, return to bootrom!`. Pak:
+The console should show `U-Boot SPL 2013.07 (...)`, the lines `Current Version`, `DDR: ... LPDDR3` and `run start1 firmware finished, return to bootrom!`. Then:
 
 ```bash
 sudo ./usbboot --cpu x2000 --stage2 u-boot-k1.bin
 ```
 
-a na konzoli `U-Boot 2013.07`, `Board: Creality K1 mainboard`, odpočet 1 s.
-Stisknout klávesu, zůstat v promptu `k1os#` a zkusit **jen čtení**:
+and on the console `U-Boot 2013.07`, `Board: Creality K1 mainboard`, a countdown of 1 s. Press a key, stay at the `k1os#` prompt and try **reads only**:
 
 ```
-k1slot status          # značka ota:kernel2, počítadlo, lcm_id (bez RTOS „not reported“)
-mmc info               # eMMC 7.3 GiB, šířka sběrnice, rychlost
-k1slot select          # pozor: uloží prostředí do eMMC (k1_env_saved) -- první zápis, viz níže
-k1slot load            # xImage ze slotu 2 na 0x81000000, délka, CRC
-bootm ${loadaddr}      # K1 OS musí naběhnout stejně jako ze stock SPL
+k1slot status          # the marker, the counter, lcm_id (without the RTOS: "not reported")
+mmc info               # eMMC 7.3 GiB, bus width, speed
+k1slot select          # careful: saves the environment to the eMMC (k1_env_saved), the first write, see below
+k1slot load            # the slot's xImage to 0x81000000, its length, CRC
+bootm ${loadaddr}      # Datel OS has to come up as it does from the stock SPL
 ```
 
-`k1slot select` a `saveenv` zapisují 32 KiB na 0x6A400, což je v prázdné části
-bootloaderové oblasti; to je první a jediný zápis, který zkouška udělá, a dá se
-vrátit vynulováním (`dd if=/dev/zero of=/dev/mmcblk0 bs=512 seek=850 count=64`).
-Kdo nechce ani to, spustí jen `k1slot status`, `k1slot load` a `bootm`.
+`k1slot select` and `saveenv` write 32 KiB at 0x6A400, in the empty part of the bootloader area. That is the first and only write the test makes, and zeros undo it (`dd if=/dev/zero of=/dev/mmcblk0 bs=512 seek=850 count=64`). To avoid even that, run only `k1slot status`, `k1slot load` and `bootm`; the kernel then gets no `bootargs`, so set them by hand first as `k1_boot` does.
 
-Co tahle zkouška neprověří: SPL ze souboru `u-boot-k1-spl.bin` čte U-Boot
-z eMMC (v USB režimu ho dodá usbboot) a start RTOS (stage 1 se vrací do ROM
-před ním). Obojí je nezměněný kód SDK, který ve stock SPL běží.
+What this test does not show: the SPL of `u-boot-k1-spl.bin` reading U-Boot from the eMMC (in USB mode usbboot supplies it), and the RTOS start (stage 1 returns to the ROM before it). Both are the SDK's code unchanged, which runs in the stock SPL.
 
-Alternativa, kdyby náš stage 1 na S12 neinicializoval DDR: `sudo ./usbboot
---uboot` nahraje Ingenic `spl.bin` + burner U-Boot z usbboot; náš `u-boot-k1.bin`
-pak lze poslat jako stage 2 místo něj.
+If our stage 1 does not initialise the DDR on the S12: `sudo ./usbboot --uboot` loads Ingenic's `spl.bin` and burner U-Boot; our `u-boot-k1.bin` can then be sent as stage 2 in its place.
 
-## Zápis do eMMC: co by to obnášelo (zatím neschváleno)
+## Writing it to the eMMC: what it would take (not decided)
 
-Jen po úspěšné zkoušce z RAM včetně `bootm` K1 OS. Zapisuje se z běžícího
-Linuxu přes SSH, s otevřenou konzolí na J1 pro případ, že by to selhalo.
+Only after the test from RAM went through, with `bootm` of Datel OS. It is written from the running Linux over SSH, with the console on J1 open in case it fails, and not while a print runs.
 
-1. Záloha oblasti 0–0xA3FFF: `dd if=/dev/mmcblk0 bs=512 count=2048` už je
-   v `~/Documents/K1-zaloha-2026-11-05` (sektory 0–2047 = celá první MiB).
-2. Zapsat SPL + U-Boot: `u-boot-k1-with-spl.bin` od sektoru 34
-   (`dd of=/dev/mmcblk0 bs=512 seek=34 conv=fsync`). Soubor má asi 158 KB =
-   309 sektorů, končí u sektoru 343, hluboko před prostředím (850) i `ota` (2048).
-3. Sektor 0 **nepřepisovat**: naše parametry jsou se stock shodné (ověřeno),
-   MBR i GPT zůstávají. Kdyby se někdy velikost SPL změnila, zapsat jen prvních
-   256 B z `u-boot-k1-sector0.bin`.
-4. Zpětně přečíst a porovnat MD5, potom restart s konzolí.
+1. The backup of the area 0–0xA3FFF is in `~/Documents/K1-zaloha-2026-11-05` (`mmcblk0-sectors-0-1488895.bin`; sectors 0–2047 are the whole first MiB).
+2. Write the SPL and U-Boot: `u-boot-k1-with-spl.bin` from sector 34 (`dd of=/dev/mmcblk0 bs=512 seek=34 conv=fsync`). The file is 158 072 bytes, 309 sectors, and ends at sector 342, far before the environment (850) and `ota` (2048).
+3. **Do not write sector 0:** our parameters equal stock's (checked), and the MBR and GPT stay. If the SPL's size ever changes, write only the first 256 bytes of `u-boot-k1-sector0.bin`.
+4. Read it back, compare the MD5, then restart with the console open.
 
-Návrat: `dd if=mmcblk0-sectors-0-1488895.bin bs=512 skip=34 count=311 | ssh
-root@tiskarna 'dd of=/dev/mmcblk0 bs=512 seek=34 conv=fsync'` vrátí stock SPL
-i U-Boot (stock U-Boot je delší, 167 KB = 327 sektorů; proto `count=330`). Když
-tiskárna nenaběhne vůbec, zbývá USB: `usbboot --uboot` (Ingenic burner) a zápis
-zálohy přes `--download` + `burn`, nebo cloner; obojí na této desce S12
-neověřené, proto zkouška z RAM předchází zápisu.
+The way back: `dd if=mmcblk0-sectors-0-1488895.bin bs=512 skip=34 count=400 | ssh root@<printer> 'dd of=/dev/mmcblk0 bs=512 seek=34 conv=fsync'` puts the stock SPL and U-Boot back. The write touched sectors 34 to 342; stock's U-Boot is the longer one and ends in sector 414, so 400 sectors from 34 cover both and stay far below the environment at 850. When the printer does not start at all, USB is left: `usbboot --uboot` (Ingenic's burner) and writing the backup with `--download` and `burn`, or the cloner. Writing through the burner is not tried on this S12 board, which is why the test from RAM comes before the write.
 
-## Co zbývá
+## What is left
 
-- Zkouška z RAM na tiskárně (čeká na fyzický přístup: USB-UART na J1, MicroUSB, BOOT + RESET).
-- Po ní rozhodnutí o zápisu do eMMC.
-- U-Boot čte eMMC ovladačem SDHCI SDK bez HS200; jádro 4 MiB se načte do ~1 s.
-  Časem `MMC_MODE_8BIT` + vyšší takt.
-- Updater K1 OS má po zápisu nového slotu volat `k1os-slot arm`.
-- Konfigurace `lcm_id` pro jiné panely: `fw_setenv k1_lcm_default N`.
+- The test from RAM on the printer. It waits for somebody at the printer: USB-UART on J1, micro USB, BOOT + RESET.
+- After it, the decision about writing to the eMMC.
+- U-Boot reads the eMMC with the SDK's SDHCI driver without HS200; a kernel of 5 MiB takes about 1 s. Later `MMC_MODE_8BIT` and a faster clock.
+- Starting the watchdog in U-Boot before `bootm`, so that a kernel that hangs is restarted and counted without the power switch. The kernel's watchdog driver has to take over a running watchdog for that; not looked at.
+- `lcm_id` for other panels: `fw_setenv k1_lcm_default N`.
