@@ -5,7 +5,8 @@
 #
 #   tools/release.sh build      ./build.sh, then collect and sums
 #   tools/release.sh collect    copy xImage, rootfs and the OTA package out of the Docker
-#                               volume into release/ under their release names
+#                               volume into release/ under their release names, with
+#                               zklippy's source at the commit the recipe names
 #   tools/release.sh sums       write release/SHA256SUMS
 #   tools/release.sh check      names, sizes against the eMMC slots, SHA256SUMS, the OTA
 #                               contents (kernel and rootfs only), version against the tag
@@ -51,6 +52,13 @@ OTA_NAME="$OTA_DIR.img"
 KERNEL_NAME="datel-os-$TAG-xImage"
 ROOTFS_NAME="datel-os-$TAG-rootfs.squashfs"
 OTA_RELEASE_NAME="datel-os-$TAG.ota.img"
+# zklippy (GPLv3) comes from a private repository, so every release carries the
+# source of the commit it was built from (zklippy_git.bb's SRCREV)
+ZKLIPPY_SRC_NAME="datel-os-$TAG-zklippy-src.tar.gz"
+ZKLIPPY_RECIPE="$HERE/meta-creality-k1/recipes-printer/zklippy/zklippy_git.bb"
+ZKLIPPY_MIRROR=/work/k1-yocto/build/downloads/git2/github.com.zales.k1-zklippy.git
+KAS_IMAGE=ghcr.io/siemens/kas/kas:4.7
+zklippy_rev() { sed -n 's/^SRCREV = "\([0-9a-f]\{40\}\)"/\1/p' "$ZKLIPPY_RECIPE"; }
 
 version() {
     local dv
@@ -79,8 +87,21 @@ collect() {
             cp -L xImage "/out/$K"
             cp -L k1-image-creality-k1.rootfs.squashfs-xz "/out/$R"
             cp -L "$OTA_NAME" "/out/$O"'
+    # zklippy's source from bitbake's own clone in the volume: the bytes the image was
+    # built from, without fetching the private repository again
+    local rev
+    rev=$(zklippy_rev)
+    [ -n "$rev" ] || die "no 40-digit SRCREV in $ZKLIPPY_RECIPE"
+    docker run --rm -u "$(id -u):$(id -g)" -v "$VOLUME:/work:ro" -v "$RELEASE_DIR:/out" \
+        -e MIRROR="$ZKLIPPY_MIRROR" -e REV="$rev" -e Z="$ZKLIPPY_SRC_NAME" \
+        --entrypoint bash "$KAS_IMAGE" -ec '
+            git -c safe.directory="*" --git-dir="$MIRROR" cat-file -e "$REV^{commit}" ||
+                { echo "zklippy $REV is not in $MIRROR: build first" >&2; exit 1; }
+            git -c safe.directory="*" --git-dir="$MIRROR" archive --format=tar.gz \
+                --prefix="zklippy-${REV:0:12}/" "$REV" > "/out/$Z"'
     echo "== collected into $RELEASE_DIR"
-    ls -l "$RELEASE_DIR/$KERNEL_NAME" "$RELEASE_DIR/$ROOTFS_NAME" "$RELEASE_DIR/$OTA_RELEASE_NAME"
+    ls -l "$RELEASE_DIR/$KERNEL_NAME" "$RELEASE_DIR/$ROOTFS_NAME" "$RELEASE_DIR/$OTA_RELEASE_NAME" \
+        "$RELEASE_DIR/$ZKLIPPY_SRC_NAME"
 }
 
 sums() {
@@ -113,6 +134,19 @@ check_ota() {   # $1 package: only the tagged version, only kernel and rootfs ch
     echo "  $(basename "$f"): $OTA_DIR, $(echo "$paths" | grep -c "/xImage\.[0-9]") kernel chunks, $(echo "$paths" | grep -c "/rootfs\.squashfs\.[0-9]") rootfs chunks, img_type: $types"
 }
 
+check_zklippy_src() {  # the source of the commit the recipe names, license included
+    local rev prefix list
+    rev=$(zklippy_rev)
+    [ -n "$rev" ] || die "no 40-digit SRCREV in $ZKLIPPY_RECIPE"
+    [ -f "$ZKLIPPY_SRC_NAME" ] || die "$ZKLIPPY_SRC_NAME missing (zklippy is GPLv3: the release carries its source)"
+    prefix="zklippy-${rev:0:12}/"
+    list=$(tar -tzf "$ZKLIPPY_SRC_NAME") || die "$ZKLIPPY_SRC_NAME is not a gzip tar"
+    for f in COPYING build.zig src/main.zig; do
+        echo "$list" | grep -qx "$prefix$f" || die "$ZKLIPPY_SRC_NAME has no $prefix$f (SRCREV $rev)"
+    done
+    echo "  $ZKLIPPY_SRC_NAME: $(echo "$list" | grep -vc '/$') files of zklippy ${rev:0:12}"
+}
+
 check() {
     version >/dev/null
     [ -d "$RELEASE_DIR" ] || die "no $RELEASE_DIR"
@@ -120,6 +154,7 @@ check() {
     local f lc n
     # Only the files a release ships, and nothing that smells like a bootloader.
     for f in *; do
+        [ "$f" = "$ZKLIPPY_SRC_NAME" ] && continue
         lc=$(echo "$f" | tr '[:upper:]' '[:lower:]')
         case "$lc" in *u-boot*|*uboot*|*spl*|*xboot*|*rtos*|*zero.bin*|*.dtb|*.bin|*.tgz|*.tar*)
             die "$f: bootloader, RTOS or stray build output, never part of a release" ;; esac
@@ -136,6 +171,7 @@ check() {
     n=$(size "$ROOTFS_NAME"); [ "$n" -le "$ROOTFS_SLOT" ] || die "$ROOTFS_NAME is $n B, the rootfs slot has $ROOTFS_SLOT"
     echo "  $ROOTFS_NAME: $n B"
     check_ota "$OTA_RELEASE_NAME"
+    check_zklippy_src
     echo "check OK: $TAG (DISTRO_VERSION $VER, OTA $OTA_VER)"
 }
 
@@ -148,8 +184,9 @@ notes() {
     echo "| File | Contents |"
     echo "|---|---|"
     echo "| \`$KERNEL_NAME\` | Linux 6.18 kernel, \`xImage\` for mmcblk0p5/p6 |"
-    echo "| \`$ROOTFS_NAME\` | the system with Kalico and its own MCU firmware (reflashes all three MCUs on a cold start), squashfs for mmcblk0p7/p8 |"
+    echo "| \`$ROOTFS_NAME\` | the system with zklippy (Kalico's Klipper host ported to Zig) and its own MCU firmware (reflashes all three MCUs on a cold start), squashfs for mmcblk0p7/p8 |"
     echo "| \`$OTA_RELEASE_NAME\` | the same as a package for the Creality updater; rename to \`$OTA_NAME\` before use |"
+    echo "| \`$ZKLIPPY_SRC_NAME\` | the source of zklippy $(zklippy_rev | cut -c1-12) as the system runs it (GPL-3.0) |"
     echo "| \`SHA256SUMS\` | checksums of all files |"
     echo
     echo "Installation is described in [docs/INSTALL.md]($REPO_URL/blob/$TAG/docs/INSTALL.md). The package holds only the kernel and the system and is written into the inactive slot; the bootloader, the RTOS and partition \`mmcblk0p9\` are not touched. Datel OS boots in trial mode: until you run \`k1os-slot keep\`, a power cycle brings the previous system back."

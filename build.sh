@@ -17,12 +17,18 @@ JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu)}"
 
 docker volume create k1yocto-work >/dev/null
 
-# zklippy's repository is private: bitbake fetches it over SSH with the agent of
-# whoever runs the build, which Docker Desktop forwards at a fixed path.
+# zklippy's repository is private: bitbake fetches it over SSH. On macOS Docker
+# Desktop forwards the agent of whoever runs the build, at a fixed path.
+# Elsewhere (the release runner on zlsnas) a read-only deploy key is handed in
+# as a file and an agent in the container holds it: ZKLIPPY_DEPLOY_KEY, by
+# default ~/.ssh/k1-zklippy-deploy.
+DEPLOY_KEY="${ZKLIPPY_DEPLOY_KEY:-$HOME/.ssh/k1-zklippy-deploy}"
 AGENT=()
 if [ "$(uname -s)" = Darwin ] && [ -n "${SSH_AUTH_SOCK:-}" ]; then
   AGENT=(-v /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
          -e SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock)
+elif [ -r "$DEPLOY_KEY" ]; then
+  AGENT=(-v "$DEPLOY_KEY":/run/k1-zklippy-deploy:ro -e DEPLOY_KEY=/run/k1-zklippy-deploy)
 fi
 
 docker run --rm -u root --cpu-shares 512 -v k1yocto-work:/work -v "$HERE":/src:ro \
@@ -37,7 +43,14 @@ docker run --rm -u root --cpu-shares 512 -v k1yocto-work:/work -v "$HERE":/src:r
     chown -R builder:builder /work/k1-yocto
     # The forwarded agent belongs to root in the container; builder joins its group.
     if [ -S "${SSH_AUTH_SOCK:-}" ]; then usermod -a -G "$(stat -c %G "$SSH_AUTH_SOCK")" builder; fi
-    su builder -c "cd /work/k1-yocto && KAS_WORK_DIR=/work/k1-yocto ${SSH_AUTH_SOCK:+SSH_AUTH_SOCK=$SSH_AUTH_SOCK} \
+    # A deploy key handed in as a file: a copy builder owns, in an agent of its own.
+    AGENT_START=""
+    if [ -n "${DEPLOY_KEY:-}" ]; then
+      keydir=$(mktemp -d); chown builder "$keydir"
+      install -o builder -m 600 "$DEPLOY_KEY" "$keydir/key"
+      AGENT_START="eval \$(ssh-agent -s) >/dev/null && ssh-add -q $keydir/key &&"
+    fi
+    su builder -c "cd /work/k1-yocto && $AGENT_START KAS_WORK_DIR=/work/k1-yocto ${SSH_AUTH_SOCK:+SSH_AUTH_SOCK=$SSH_AUTH_SOCK} \
         BB_ENV_PASSTHROUGH_ADDITIONS=\"BB_NUMBER_THREADS PARALLEL_MAKE\" BB_NUMBER_THREADS=$JOBS PARALLEL_MAKE=\"-j $JOBS\" \
         kas shell $KAS_FILE -c \"bitbake $TARGET\"" \
       > /work/k1-yocto/build-last.log 2>&1

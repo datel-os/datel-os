@@ -12,7 +12,13 @@ JOBS=4 ./build.sh                            # bitbake threads and make jobs
 
 The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/images/creality-k1/`: `xImage` (kernel), `k1-image-creality-k1.rootfs.squashfs-xz` (system) and `CR4CU220812S11_ota_img_V9.X.Y.Z.img` (the stock updater's package format). `TAG=vX.Y.Z tools/release.sh collect` copies them out of the volume under their release names; `tools/flash-slot2.sh` installs them, see [INSTALL.md](INSTALL.md).
 
-zklippy comes from the private repository `zales/k1-zklippy`, which bitbake fetches over SSH. `build.sh` forwards the SSH agent of whoever runs it into the build container (Docker Desktop's on the Mac); the agent needs a key that may read that repository (`ssh -T git@github.com` greets you by name). GitHub's host keys are pinned in `recipes-printer/zklippy/files/github_known_hosts`. The release runner on the NAS has no such key yet: until it gets one (a read-only deploy key of the repository, which kas takes as `SSH_PRIVATE_KEY_FILE`), a release build stops at zklippy's fetch. A public release with zklippy in it also needs zklippy's source to be public (GPL-3.0).
+zklippy comes from the private repository `zales/k1-zklippy`, which bitbake fetches over SSH. GitHub's host keys are pinned in `recipes-printer/zklippy/files/github_known_hosts`.
+
+* On the Mac, `build.sh` forwards your SSH agent into the build container (Docker Desktop's). The agent needs a key that may read that repository: `ssh -T git@github.com` greets you by name.
+* Elsewhere, `build.sh` hands a key file into the container, where an agent of the build user holds it. The file is `ZKLIPPY_DEPLOY_KEY`, by default `~/.ssh/k1-zklippy-deploy`.
+* The release runner on the NAS has that file: a read-only deploy key of the repository, created on 17 Nov 2026 (see [RELEASE.md](RELEASE.md)).
+
+zklippy is GPL-3.0 and its repository stays private, so every release carries zklippy's source.
 
 ## Layer layout
 
