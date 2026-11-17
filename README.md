@@ -2,7 +2,7 @@
 
 # Datel OS
 
-Open firmware for the Creality K1, built from source with Yocto: Linux 6.18, Kalico with open firmware for all three MCUs, Moonraker, Mainsail, camera streaming, hardware-encoded timelapse and Twitch live streaming. The stock bootloader stays in place and the second eMMC slot always holds a way back.
+Open firmware for the Creality K1, built from source with Yocto: Linux 6.18, zklippy (Kalico's host as one Zig binary) or Kalico with open firmware for all three MCUs, Moonraker, Mainsail, camera streaming, hardware-encoded timelapse and Twitch live streaming. The stock bootloader stays in place and the second eMMC slot always holds a way back.
 
 **Pre-release for developers.** It runs on the author's K1 in both A/B slots. The display does not work yet, recovery from a kernel that fails to boot needs a USB cable, and everything is verified on one printer. Version 0.7.0 takes the kernel in which every part of the K1's support is written against upstream's frameworks ([zales/k1-linux](https://github.com/zales/k1-linux)), runs the CPU at 912 MHz instead of 816, makes the printer take the near one of two access points, and adds `htop`. **No print ran on this kernel before the release**: the last one, of 78 minutes, ran on the kernel as it was on the morning of 15 November 2026 (zales/k1-linux pull request 21). What ran that day on the reference printer: with the kernel before its clock was raised, starts from a restart and from a power cycle and a reset by the watchdog; with this release's kernel, a start and 25 minutes of floating point work with the bed hot, without a wrong result. The CPU's clock has one 24 MHz step of margin now, see [Limitations](#limitations). Read [Limitations](#limitations) before installing.
 
@@ -12,7 +12,7 @@ Open firmware for the Creality K1, built from source with Yocto: Linux 6.18, Kal
 |---|---|
 | Kernel | Linux 6.18.63, kernel.org's stable kernel with the K1's support from [zales/k1-linux](https://github.com/zales/k1-linux) (the X2000 on upstream's Ingenic platform, upstream's drivers with the X2000 added, a K1 device tree): eMMC, Wi-Fi with the stock MAC, all three MCU UARTs, UVC camera, Helix video codec. The CPU runs at 912 MHz instead of the boot loader's 1200 ([why](docs/DIAGNOSTICS.md#cpu-clock-and-floating-point)) |
 | System | Yocto scarthgap, systemd, read-only squashfs root, data in `/usr/data/k1os`, A/B slots with a trial boot that falls back to the other slot |
-| Printing | Kalico with open firmware on all three MCUs, load cell probe, verified prints |
+| Printing | zklippy, Kalico's host as one Zig binary, or Kalico itself, one command apart ([KALICO.md](docs/KALICO.md#the-host-zklippy-or-kalico)); open firmware on all three MCUs, load cell probe; prints verified with Kalico |
 | Web UI | Moonraker and Mainsail behind nginx, printer name and camera registered on first boot |
 | Camera | 720p MJPEG, snapshots and H.264 over WebRTC from the Helix codec (shared with the Twitch stream), all from one daemon of 1 MB, `k1os-camera` |
 | Timelapse | moonraker-timelapse with the render on the X2000 Helix hardware encoder |
@@ -33,6 +33,7 @@ Ordered by how much it hurts.
 5. **Verified on one printer:** board CR4CU220812S11, panel `lcm_id=3`.
 6. **Wi-Fi is 2.4 GHz only.** The camera stream can saturate a weak link; the default is 8 fps.
 7. **The CPU is slower than on stock.** At 1200 MHz the reference printer computes wrong floating point results and Kalico shuts down in the middle of a print, so the kernel runs it at 912 MHz, the highest clock that stayed clean in the test (816 MHz up to version 0.6.0). The margin is thin: at 936 MHz, the next step, the test gave a wrong result within a minute, and no print has run at 912 MHz yet ([the measurements](docs/DIAGNOSTICS.md#cpu-clock-and-floating-point)). A print at several times the sliced speed with two camera viewers and the Twitch stream at once can use both CPUs up; Kalico is set to tolerate stalls of up to three seconds.
+8. **zklippy is new.** It heats, homes, probes, meshes and printed a one-layer test on the reference printer; a long print has not finished under it yet. The first one stopped after 131 s when 40 MB written to the eMMC stalled the host for 3.3 s. `k1os-klipper-host kalico` brings Kalico back.
 
 ## Install
 
@@ -69,7 +70,7 @@ Images land in the volume under `build/tmp/deploy/images/creality-k1/`; `TAG=vX.
 | Document | Contents |
 |---|---|
 | [docs/INSTALL.md](docs/INSTALL.md) | Backup, flashing, trial boot, both slots, going back to stock, recovery |
-| [docs/KALICO.md](docs/KALICO.md) | Kalico and the MCU firmware: configuration conversion, probe and input shaper calibration, fans |
+| [docs/KALICO.md](docs/KALICO.md) | The Klipper host (zklippy or Kalico) and the MCU firmware: configuration conversion, probe and input shaper calibration, fans |
 | [docs/CAMERA.md](docs/CAMERA.md) | Camera settings, OrcaSlicer, timelapse |
 | [docs/TWITCH.md](docs/TWITCH.md) | Twitch live stream: setup, Mainsail dialog, overlay, automatic title |
 | [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md) | Watchdog, the journal after a hang and on another machine, the health line, the flight recorder, the CPU clock and floating point, what happens out of memory |
@@ -97,6 +98,7 @@ Our code, recipes, scripts, documentation and artwork are under the MIT license 
 |---|---|---|
 | Linux 6.18 with the K1's support | GPL-2.0 | [zales/k1-linux](https://github.com/zales/k1-linux); what mainline lacks for the X2000 is written there from [NebulaOS-KE/NebulaOS-kernel](https://github.com/NebulaOS-KE/NebulaOS-kernel) (Ingenic's SDK kernel 6.6), and a file written from one of the SDK's names it at its top |
 | Kalico host and MCU firmware | GPL-3.0 | [pellcorp/kalico](https://github.com/pellcorp/kalico), [zales/k1-kalico-firmware](https://github.com/zales/k1-kalico-firmware) (a fork of pellcorp/k1-kalico-firmware) |
+| zklippy, Kalico's host ported to Zig | GPL-3.0 | `zales/k1-zklippy`, a private repository for now |
 | Moonraker, Mainsail, moonraker-timelapse | GPL-3.0 | upstream |
 | Mbed TLS 3.6.2 (the DTLS handshake of WebRTC, inside `k1os-camera`) | Apache-2.0 | [Mbed-TLS/mbedtls](https://github.com/Mbed-TLS/mbedtls) |
 | Zig 0.17.1 (build tool only) | MIT | [ziglang.org](https://ziglang.org/) |
