@@ -1,0 +1,82 @@
+#!/bin/sh
+# Test of k1os-slot against files in place of the eMMC:
+#   sh k1os-slot-test.sh <path to k1os-slot>
+# The recipe runs it on the build host (do_compile).
+set -u
+SLOT=${1:?usage: k1os-slot-test.sh <k1os-slot>}
+T=$(mktemp -d) || exit 1
+trap 'rm -rf "$T"' EXIT
+export K1OS_SLOT_MARKER=$T/p1 K1OS_SLOT_KEEP=$T/boot-keep K1OS_SLOT_CMDLINE=$T/cmdline \
+    K1OS_SLOT_PART=$T/p K1OS_SLOT_RUN=$T
+fails=0
+
+marker() { dd if="$T/p1" bs=512 count=1 2>/dev/null | tr -d '\000' | head -n 1; }
+set_marker() { { printf '%s\n\n' "$1"; dd if=/dev/zero bs=500 count=1 2>/dev/null; } | dd of="$T/p1" bs=512 count=1 2>/dev/null; }
+boot() { echo "console=ttyS2 root=/dev/mmcblk0p$1 rootwait ro" > "$T/cmdline"; }
+system() { for p in "$@"; do { printf 'hsqs'; dd if=/dev/zero bs=8188 count=1 2>/dev/null; } > "$T/p$p"; done; }
+empty() { for p in "$@"; do dd if=/dev/zero of="$T/p$p" bs=8192 count=1 2>/dev/null; done; }
+run() { ${K1OS_SLOT_SH:-sh} "$SLOT" "$@" >"$T/out" 2>&1; }
+is() {  # $1 what, $2 got, $3 want
+    if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2', want '$3'"; fails=$((fails + 1)); fi
+}
+fresh() { rm -f "$T/boot-keep"; system 5 6 7 8; }
+
+# a new system in slot 2, written from slot 1: a trial until it is kept
+fresh; boot 8; set_marker ota:kernel2
+run trial;   is "trial points at the other slot" "$(marker)" ota:kernel
+run confirm; is "no boot-keep: stays a trial" "$(marker)" ota:kernel
+run keep;    is "keep points at this slot" "$(marker)" ota:kernel2
+is "keep names this slot" "$(cat "$T/boot-keep")" ota:kernel2
+run trial; run confirm; is "a kept slot comes back to itself" "$(marker)" ota:kernel2
+run status;  is "status of a kept slot" "$(grep '^keep:' "$T/out")" "keep:    yes"
+
+# the next system, in slot 1, does not inherit that keep
+boot 7; set_marker ota:kernel
+run trial;   is "new system: trial points back" "$(marker)" ota:kernel2
+run confirm; is "new system: the other slot's keep is not its own" "$(marker)" ota:kernel2
+run status;  is "status says whose keep it is" "$(grep '^keep:' "$T/out")" "keep:    no (trial; boot-keep names ota:kernel2)"
+# ... and the kept system is still kept when the power cycle brings it back
+boot 8
+run trial; run confirm; is "the kept system still confirms itself" "$(marker)" ota:kernel2
+
+# a boot-keep without a name (Datel OS up to 0.8.1) keeps nothing here
+fresh; : > "$T/boot-keep"; boot 7; set_marker ota:kernel
+run trial; run confirm; is "boot-keep without a name: a trial" "$(marker)" ota:kernel2
+run status; is "status of a nameless boot-keep" "$(grep '^keep:' "$T/out")" "keep:    no (trial; boot-keep names no slot)"
+printf 'junk\n' > "$T/boot-keep"
+run confirm; is "boot-keep with another text: a trial" "$(marker)" ota:kernel2
+
+# release
+fresh; boot 8; set_marker ota:kernel2; run keep
+run release; is "release points at the other slot" "$(marker)" ota:kernel
+is "release removes boot-keep" "$(ls "$T/boot-keep" 2>/dev/null)" ""
+
+# the other slot is being written (or a write broke off): never the next boot
+for part in 5 7; do
+    fresh; boot 8; set_marker ota:kernel2; run keep; empty $part
+    run trial; rc=$?
+    is "p$part empty: trial leaves the marker" "$(marker)" ota:kernel2
+    is "p$part empty: trial is no failure" "$rc" 0
+    run release; rc=$?
+    is "p$part empty: release refuses" "$rc $(marker) $(cat "$T/boot-keep")" "1 ota:kernel2 ota:kernel2"
+    run status; is "p$part empty: status says so" "$(grep -c '^other:' "$T/out")" 1
+done
+fresh; boot 7; set_marker ota:kernel; empty 6
+run trial; is "slot 2 empty, running slot 1: marker stays" "$(marker)" ota:kernel
+# a partition that is not there counts as a system, as before the check
+fresh; boot 8; set_marker ota:kernel2; rm -f "$T/p5"
+run trial; is "unreadable partition: trial as before" "$(marker)" ota:kernel
+
+# an unknown root never reaches the marker
+for cmd in trial confirm keep release; do
+    fresh; echo "console=ttyS2 root=PARTUUID=1234 ro" > "$T/cmdline"; set_marker ota:kernel2
+    echo ota:kernel2 > "$T/boot-keep"
+    run $cmd; is "unknown root: $cmd leaves the marker" "$(marker)" ota:kernel2
+done
+before=$(cksum < "$T/p1")
+is "the marker block is 512 bytes, text, two newlines, zeros" \
+    "$(wc -c < "$T/p1" | tr -d ' ') $(dd if="$T/p1" bs=1 skip=11 count=2 2>/dev/null | od -An -tx1 | tr -d ' ')" "512 0a0a"
+is "p1 untouched by the unknown root" "$(cksum < "$T/p1")" "$before"
+
+[ "$fails" = 0 ] && echo "k1os-slot: all tests passed" || echo "k1os-slot: $fails FAILED"
+[ "$fails" = 0 ]

@@ -4,18 +4,37 @@
 #   "ota:kernel2" -> slot 2 (kernel p6, rootfs p8)
 # The SPL has no boot counter and no fallback, so Datel OS boots as a trial:
 #   trial    first thing at boot: point the marker at the other slot, so a
-#            hang or a power cycle from here on brings the other system back
+#            hang or a power cycle from here on brings the other system back.
+#            Not when the other slot holds no system (see below): then the
+#            marker stays where it is.
 #   confirm  after /usr/data is up: point it back at this slot, but only if
-#            /usr/data/k1os/boot-keep exists
-#   keep     create boot-keep and stay on this slot from now on
+#            /usr/data/k1os/boot-keep names this slot
+#   keep     write this slot's name into boot-keep and stay on it from now on
 #   release  remove boot-keep; the next boot goes to the other slot
 #   status   show the running slot, the next slot and boot-keep
+#
+# boot-keep holds the marker text of the slot that was kept. /usr/data is
+# shared by both slots, so a file that only had to exist was also true for
+# the system written into the other slot afterwards: that one confirmed
+# itself on its first boot, before anyone had seen it run. A boot-keep
+# without a name (written by Datel OS up to 0.8.1) keeps no slot of this
+# system; the older system that wrote it still reads it as its own.
+#
+# A slot that is being written holds no system: tools/flash-slot2.sh zeroes
+# the first 4 KiB of its kernel and of its rootfs before the write and puts
+# them in last, after the read-back. A slot whose kernel or rootfs starts
+# with a zero block is never made the next boot.
+#
+# The paths can be set from outside for k1os-slot-test.sh.
 
-M=/dev/mmcblk0p1
-KEEP=/usr/data/k1os/boot-keep
+M=${K1OS_SLOT_MARKER:-/dev/mmcblk0p1}
+KEEP=${K1OS_SLOT_KEEP:-/usr/data/k1os/boot-keep}
+CMDLINE=${K1OS_SLOT_CMDLINE:-/proc/cmdline}
+PART=${K1OS_SLOT_PART:-/dev/mmcblk0p}
+RUN=${K1OS_SLOT_RUN:-/run}
 
 running() {
-    case " $(cat /proc/cmdline) " in
+    case " $(cat "$CMDLINE") " in
         *" root=/dev/mmcblk0p8 "*) echo ota:kernel2 ;;
         *" root=/dev/mmcblk0p7 "*) echo ota:kernel ;;
         *) echo unknown ;;
@@ -31,18 +50,52 @@ other() {
 }
 
 current() {
-    dd if=$M bs=512 count=1 2>/dev/null | tr -d '\000' | head -n 1
+    dd if="$M" bs=512 count=1 2>/dev/null | tr -d '\000' | head -n 1
+}
+
+# The slot that boot-keep names; nothing for a file without a name
+kept() {
+    [ -e "$KEEP" ] || return 0
+    case "$(head -n 1 "$KEEP" 2>/dev/null)" in
+        ota:kernel) echo ota:kernel ;;
+        ota:kernel2) echo ota:kernel2 ;;
+    esac
+}
+
+# Does the first 4 KiB of a partition hold anything but zeros?
+has_data() {
+    [ "$(dd if="$1" bs=4096 count=1 2>/dev/null | tr -d '\000' | wc -c)" -gt 0 ]
+}
+
+# Does the slot of this marker text hold a system? Only a slot that
+# flash-slot2.sh marked as being written says no; a partition that cannot
+# be read says yes, as before there was this check.
+holds_system() {
+    case "$1" in
+        ota:kernel) k=5; r=7 ;;
+        ota:kernel2) k=6; r=8 ;;
+        *) return 1 ;;
+    esac
+    for p in $k $r; do
+        [ -r "$PART$p" ] || continue
+        has_data "$PART$p" || return 1
+    done
+    return 0
 }
 
 write() {
+    case "$1" in
+        ota:kernel|ota:kernel2) ;;
+        *) echo "k1os-slot: '$1' is no slot, marker untouched" >&2; return 1 ;;
+    esac
     [ "$(current)" = "$1" ] && return 0
     # Build the whole 512-byte block first (text, two newlines, zeros, as
     # stock writes it) and write it in one go, so p1 is never left half-written.
     n=$((${#1} + 2))
-    b=/run/k1os-slot.$$
-    { printf '%s\n\n' "$1"; dd if=/dev/zero bs=$((512 - n)) count=1 2>/dev/null; } > $b
-    dd if=$b of=$M bs=512 count=1 2>/dev/null
-    rm -f $b
+    b=$RUN/k1os-slot.$$
+    { printf '%s\n\n' "$1"; dd if=/dev/zero bs=$((512 - n)) count=1 2>/dev/null; } > "$b"
+    dd if="$b" of="$M" bs=512 count=1 2>/dev/null
+    rm -f "$b"
     sync
     if [ "$(current)" != "$1" ]; then
         echo "k1os-slot: marker write failed, p1 reads '$(current)'" >&2
@@ -54,18 +107,47 @@ write() {
 case "$1" in
     trial)
         o=$(other)
-        [ "$o" = unknown ] && { echo "k1os-slot: unknown root in /proc/cmdline, marker untouched" >&2; exit 0; }
+        [ "$o" = unknown ] && { echo "k1os-slot: unknown root in $CMDLINE, marker untouched" >&2; exit 0; }
+        if ! holds_system "$o"; then
+            echo "k1os-slot: the other slot ($o) holds no system, marker stays $(current)" >&2
+            exit 0
+        fi
         write "$o" ;;
     confirm)
-        if [ -e $KEEP ]; then write "$(running)"; else echo "k1os-slot: trial boot, next boot is $(current)"; fi ;;
+        r=$(running)
+        if [ "$r" != unknown ] && [ "$(kept)" = "$r" ]; then
+            write "$r"
+        else
+            echo "k1os-slot: trial boot, next boot is $(current)"
+        fi ;;
     keep)
-        touch $KEEP && write "$(running)" ;;
+        r=$(running)
+        [ "$r" = unknown ] && { echo "k1os-slot: unknown root in $CMDLINE, nothing kept" >&2; exit 1; }
+        # the name first, whole, then the marker
+        printf '%s\n' "$r" > "$KEEP.new" && mv "$KEEP.new" "$KEEP" && sync && write "$r" ;;
     release)
-        rm -f $KEEP; write "$(other)" ;;
+        o=$(other)
+        [ "$o" = unknown ] && { echo "k1os-slot: unknown root in $CMDLINE, nothing released" >&2; exit 1; }
+        if ! holds_system "$o"; then
+            echo "k1os-slot: the other slot ($o) holds no system, nothing released" >&2
+            exit 1
+        fi
+        rm -f "$KEEP"; write "$o" ;;
     status)
-        echo "running: $(running)"
+        r=$(running)
+        k=$(kept)
+        echo "running: $r"
         echo "next:    $(current)"
-        if [ -e $KEEP ]; then echo "keep:    yes"; else echo "keep:    no (trial)"; fi ;;
+        if [ "$r" != unknown ] && [ "$k" = "$r" ]; then
+            echo "keep:    yes"
+        elif [ -n "$k" ]; then
+            echo "keep:    no (trial; boot-keep names $k)"
+        elif [ -e "$KEEP" ]; then
+            echo "keep:    no (trial; boot-keep names no slot)"
+        else
+            echo "keep:    no (trial)"
+        fi
+        holds_system "$(other)" || [ "$(other)" = unknown ] || echo "other:   no system (being written, or a write broke off)" ;;
     *)
         echo "usage: k1os-slot trial|confirm|keep|release|status" >&2; exit 1 ;;
 esac
