@@ -1,8 +1,7 @@
 [Unit]
 Description=Klipper 3D printer host (Creality K1)
 Requires=k1os-datadir.service
-Wants=klipper-mcu.service
-After=k1os-datadir.service klipper-mcu.service network.target
+After=k1os-datadir.service network.target
 
 [Service]
 Type=simple

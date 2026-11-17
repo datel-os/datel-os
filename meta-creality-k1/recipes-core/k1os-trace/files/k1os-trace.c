@@ -53,7 +53,6 @@ struct proc {
 
 static struct proc procs[] = {
 	{ "klippy", "klippy.py", 0, 0, 0, 0 },
-	{ "mcu", "klipper_mcu", 0, 0, 0, 0 },
 	{ "moonraker", "moonraker.py", 0, 0, 0, 0 },
 	{ "camera", "k1os-camera", 0, 0, 0, 0 },
 	{ "nginx", "nginx: worker", 0, 0, 0, 0 },
@@ -303,7 +302,7 @@ static int klippy_shut_down(char *reason, size_t size)
 
 static const char header[] =
 	"time late_max late_n cpu_user cpu_sys cpu_irq cpu_idle cpu_iowait load1 mem_avail_mb psi_cpu "
-	"klippy_cpu klippy_wait mcu_cpu mcu_wait moonraker_cpu moonraker_wait camera_cpu camera_wait nginx_cpu nginx_wait "
+	"klippy_cpu klippy_wait moonraker_cpu moonraker_wait camera_cpu camera_wait nginx_cpu nginx_wait "
 	"buffer_s stalls print api_ms wifi_tx_kbit wifi_rx_kbit\n"
 	"# late_max: latest of this program's 10 ms wake-ups, ms; late_n: how many came more than 20 ms late\n"
 	"# *_cpu: percent of one CPU; *_wait: ms spent ready to run but waiting for a CPU (-1: the kernel does not say)\n"

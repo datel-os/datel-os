@@ -63,7 +63,7 @@ To read only these lines: `journalctl -t k1os-health`, or `grep k1os-health` on 
 
 ## The flight recorder
 
-`k1os-trace` answers "what was the system doing when the print died". Once a second it samples how late its own 10 ms wake-ups come, the CPU split, CPU time and run-queue wait of Klipper, the host MCU, Moonraker, the camera and nginx, Klipper's move buffer and stall count, and the Wi-Fi traffic. The last 900 s stay in memory. When `klippy.log` says "Transition to shutdown state", they are written to `/usr/data/k1os/trace/<time>/`:
+`k1os-trace` answers "what was the system doing when the print died". Once a second it samples how late its own 10 ms wake-ups come, the CPU split, CPU time and run-queue wait of Klipper, Moonraker, the camera and nginx, Klipper's move buffer and stall count, and the Wi-Fi traffic. The last 900 s stay in memory. When `klippy.log` says "Transition to shutdown state", they are written to `/usr/data/k1os/trace/<time>/`:
 
 | File | Contents |
 |---|---|
@@ -124,7 +124,7 @@ The printer has 216 MB of RAM for Linux. Three things keep a shortage from freez
 
 - **Swap in zram**, half the size of the RAM (`k1os-zram-swap`). Data that is not in use is compressed in place instead of program code being dropped and read back from the xz-compressed root.
 - **The kernel kills a process instead of thrashing.** The multi-gen LRU's `min_ttl_ms` is 1000: when what was used in the last second cannot be kept in memory, the OOM killer runs.
-- **The print is the last to go.** `OOMScoreAdjust`: Twitch stream 700, a timelapse render 500, the camera daemon 300, Moonraker -300, Klipper and its host MCU -900.
+- **The print is the last to go.** `OOMScoreAdjust`: Twitch stream 700, a timelapse render 500, the camera daemon 300, Moonraker -300, Klipper -900.
 
 Tested by a process that takes 8 MB a second: it was killed after 19 s, the printer answered every second in between and Klipper stayed ready.
 

@@ -4,7 +4,7 @@ Description=Datel OS: update the MCU firmware over the serial bootloader
 # runs as soon as systemd does, before the rest of userspace. The serial
 # ports come from the built-in driver; the script waits briefly for them.
 DefaultDependencies=no
-Before=sysinit.target klipper-mcu.service klipper.service
+Before=sysinit.target klipper.service
 
 [Service]
 Type=oneshot

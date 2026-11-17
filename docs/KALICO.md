@@ -17,7 +17,7 @@ Firmware updates happen only on a cold start: the bootloader waits about 15 s af
 
 ## What the configuration conversion does
 
-- Removes `prtouch_v2`, `bl24c16f`, `custom_macro` and `fan_feedback`.
+- Removes `prtouch_v2`, `custom_macro`, `fan_feedback` and Creality's EEPROM module `bl24c16f` with `[mcu rpi]`, the Linux host MCU that only the EEPROM used. Datel OS runs no host MCU.
 - Switches the Z endstop to `probe:z_virtual_endstop`.
 - Includes `k1os_kalico.cfg` with the probe, the mesh, replacements for Creality's commands (`CX_PRINT_LEVELING_CALIBRATION`, `CX_PRINT_DRAW_ONE_LINE`, `PRTOUCH_READY`, …), the timelapse macros and the Twitch macros.
 - Seeds the `SAVE_CONFIG` block with values measured on one K1 unless stock already has them: `[load_cell_probe]` counts_per_gram 116.7 and tare, `[input_shaper]` X ei 42.2 Hz, Y mzv 53.2 Hz. The printer homes and meshes right after flashing; your own calibration is recommended.

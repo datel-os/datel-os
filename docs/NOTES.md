@@ -150,6 +150,14 @@ A kernel without PREEMPT_RT (6.6.162) stopped without a message within two secon
 - `fptest` does more rounds a minute under this kernel than it did on 11 November under the SDK kernel 6.6 with PREEMPT_RT: about 68,000 at 912 MHz against 51,000. The build of the program may differ between the two days, so this is not a measurement of the kernels.
 - The kernel built with that device tree says "CPU clock set to 912 MHz" at boot and leaves the clock unit's two registers exactly as the search's `cpuclk` had them at that clock (CPCCR 0x9a094410, CPAPCR 0x0250086d).
 
+## 17 November 2026: a host MCU nobody read
+
+- At rest half of the journal was one line every 5 s: `klipper_mcu[1117]: Got error -1 in write: (11)Resource temporarily unavailable`. It was not new. The log server, which keeps the printer's journal since 10 November, has it in all eleven boots that lasted longer than two hours, from then until the boot's end: it started 7,481 to 7,491 s after the kernel in the ten boots from 11 to 16 November, and 8,104 s after it in the one of 10 November.
+- `klipper_mcu` is Klipper's Linux host MCU. It made a pseudo-tty, linked its other side to `/tmp/klipper_host_mcu` and kept that side open itself. No one else had it open: stock Creality used the host MCU only for its EEPROM module (`[mcu rpi]` with `[bl24c16f]`), and `k1os-kalico-config` has removed both from the configuration since the first Kalico image. The image still started the service at every boot.
+- Like every Klipper MCU it sends a `stats` report every 5 s (5.06 s on average). Framed, it is 14 bytes: two for its message number (129 in the host MCU's dictionary), one for the 50 wake-ups in 5 s, and, by the timing below, three for each of the two sums. Unread, the reports stay in the tty: 4,095 bytes in the line discipline, then the kernel's buffers for the pty's input, which `pty.c` limits to 8,192 bytes counted in pieces of 256 that hold 512 bytes each. A model of that code fits 1,477 reports of 14 bytes, 7,477 s (13 or 15 bytes would give 8,100 or 7,062 s); this boot started the service 15 s after the kernel and logged the first error at 7,482 s. From then on the pty took nothing, and each report was a refused non-blocking write and a line.
+- Read on the printer: the process's descriptors 3 and 4 were `/dev/ptmx` and `/dev/pts/0`, no other process had `/dev/pts/0` open, and `FIONREAD` on it gave 4,095 bytes waiting. Once, at 07:29:40 UTC on 16 November, a script that collected the four MCUs' dictionaries for a profile of Klipper read the pty; the errors stopped for 7,331 s and came back.
+- The image no longer builds or starts a host MCU, and `k1os-trace` no longer samples one.
+
 ## Phases
 
 0. **Rescue:** eMMC backup and USB mask-ROM boot. Backup done; USB boot described, not verified on S12.
