@@ -6,17 +6,22 @@ Open firmware for the Creality K1, built from source with Yocto: Linux 6.18, zkl
 
 **Pre-release for developers.** It runs on the author's K1 in both A/B slots. The display does not work yet, recovery from a kernel that fails to boot needs a USB cable, and everything is verified on one printer. Since version 0.8.0 the Klipper host is **zklippy**: Kalico's host ported module by module to one Zig binary, in place of Kalico's Python host, which left the image. 0.8.0 also keeps the journal to 16 MiB of `/run`, has no unused Linux host MCU any more, and its health line reports the RAM tmpfs holds. The kernel is 0.7.0's.
 
-Version 0.8.1 is 0.8.0 with two changes around the camera:
-* The graph and statistics panels in the WebRTC and Twitch picture cost half the CPU they did: with them on, at 1280×720 and 30 fps, the camera daemon uses 7.6 % of one core instead of 15.0 %.
-* Mainsail's WebRTC camera no longer keeps the camera's two viewer places taken after its view is gone, which left the camera dark in every other window until the page was reloaded ([Viewer limits](docs/CAMERA.md#viewer-limits)).
+Version 0.8.1 gave the camera's graph and statistics panels half their CPU cost and made Mainsail's WebRTC camera give its viewer place back when its view is gone ([Viewer limits](docs/CAMERA.md#viewer-limits)).
 
-What ran before the release, on the reference printer on 17 November 2026:
+Version 0.8.2 is 0.8.1 with the fixes of a review of the whole project:
+* **Every new system is a trial again.** `boot-keep` names the slot that was kept, so a system written into the other slot no longer confirms itself on its first boot, before anyone has seen it run: it needs its own `k1os-slot keep`. A slot that `tools/flash-slot2.sh` is writing, or left half written, is never made the next boot ([Trial boot and keeping a slot](docs/INSTALL.md#trial-boot-and-keeping-a-slot)). Use this version's `flash-slot2.sh` from now on.
+* The title template of the Twitch stream is rendered in a sandbox. Any host on the local network can set it through Moonraker, and it ran in Moonraker's process, as root, without one. A template may use the placeholders, `{% if %}`, `{% set %}` and a short list of filters ([TWITCH.md](docs/TWITCH.md)).
+* zklippy: `SAVE_CONFIG` replaces `printer.cfg` with a finished file instead of writing in place, where a power cut left it empty; a macro variable no longer keeps a pointer into freed memory; a restart leaves nothing of the old printer behind; `M114` and the shutdown report no longer bring the host down on rare input.
+* One damaged snapshot no longer costs a timelapse its video, and the camera's certificate fingerprint stays inside its buffer.
+
+What ran before this release: the tests on the build host only. zklippy's test suite on a Mac, with the comparisons against Kalico for macros and `SAVE_CONFIG`; `k1os-slot` against files in place of the eMMC, and `flash-slot2.sh` against a stand-in for the printer, with the write broken off before each of its steps; the title template against Jinja 3.1.4; the timelapse script with stand-ins for the encoder.
+
+**Nothing of 0.8.2 has run on a printer: not this image, not the new `k1os-slot`, not `flash-slot2.sh` with the printer's own BusyBox.** Write it into the slot that is not running and try it before `k1os-slot keep`; the system you run now stays in the other slot. Read [Limitations](#limitations) before installing.
+
+What ran on the reference printer for the versions before it, on 17 November 2026:
 * An 89-minute print under zklippy, started by hand on 0.7.0 with the same zklippy binary. It completed with the steps never less than 3.0 s ahead and no page of the program read back from the disk.
 * Version 0.8.0, as built from its sources before its release: it booted from the second slot and was kept, with zklippy ready in 10 s, its memory locked, no Moonraker warning and no failed unit, and an 18-minute print completed on it.
-* The camera daemon with 0.8.1's drawing of the panels, built from the same sources outside the image and started in place of 0.8.0's: through that 18-minute print with two WebRTC viewers, with no frame left out, and at rest on the released 0.8.0 in turns with its own daemon, which gave the two figures above.
-* Mainsail's player with its new methods, in a desktop browser against the printer's camera, with Mainsail's files served from a computer: a view left while its connection was being set up took a viewer place with the release's player and none with this one.
-
-**This release's image was not started on the printer before the release**, and the player was not tried in OrcaSlicer's device tab, where the taken places were first seen. Read [Limitations](#limitations) before installing.
+* The camera daemon with 0.8.1's drawing of the panels, built from the same sources outside the image and started in place of 0.8.0's, through that 18-minute print with two WebRTC viewers, and Mainsail's player with its new methods in a desktop browser against the printer's camera.
 
 ## What works
 
