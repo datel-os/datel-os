@@ -71,7 +71,7 @@ While the stream runs, the channel title is set from Klipper's state in this sha
 | `TWITCH_AUTOSTART` | `0` | Start the stream at every boot |
 | `TWITCH_CLIENT_ID` | | Client ID for the title API |
 | `TWITCH_CHANNEL` | login from `TWITCH_LOGIN` | Channel name, shown in the dialog |
-| `TWITCH_TITLE_TEMPLATE` | see above | Jinja template; placeholders `file`, `progress`, `elapsed`, `hotend`, `bed`, `hotend_temp`, `hotend_target`, `bed_temp`, `bed_target`, `state`, `state_emoji`, `layer`, `total_layers`, `channel`, `message` |
+| `TWITCH_TITLE_TEMPLATE` | see above | Jinja template, rendered in a sandbox: placeholders, `{% if %}`, `{% set %}` and the filters `upper`, `lower`, `title`, `capitalize`, `trim`, `truncate`, `replace`, `round`, `int`, `float`, `abs`, `length`, `string`, `default`; no calls and no loops; placeholders `file`, `progress`, `elapsed`, `hotend`, `bed`, `hotend_temp`, `hotend_target`, `bed_temp`, `bed_target`, `state`, `state_emoji`, `layer`, `total_layers`, `channel`, `message` |
 | `TWITCH_IDLE_TITLE` | unchanged | Title set when the stream stops |
 | `TWITCH_CATEGORY` | `Makers & Crafting` | Category set at stream start; empty leaves it |
 | `TWITCH_M117` | `1` | Status line on the printer display |

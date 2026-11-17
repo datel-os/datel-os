@@ -21,6 +21,8 @@ import urllib.parse
 from typing import TYPE_CHECKING, Any, Dict, Optional
 try:
     import jinja2
+    import jinja2.nodes
+    import jinja2.sandbox
 except ImportError:  # Moonraker ships jinja2; plain placeholders still work without it
     jinja2 = None
 
@@ -63,6 +65,77 @@ PIPELINE_KEYS = ("resolution", "bitrate_kbps", "overlay", "ingest")
 ENCODER_KEYS = ("resolution", "bitrate_kbps", "overlay")
 # TWITCH_OVERLAY: 0 plain camera, 1 status bar, 2 status bar and graph panel
 OVERLAY_NAMES = {0: "off", 1: "text", 2: "text+graph"}
+
+
+def _one_line(val: Any, limit: int) -> str:
+    """A free-text setting as one line. twitch.env is read a line at a time,
+    so a line break inside a value would start a setting of its own."""
+    text = re.sub(r"\s*[\r\n]+\s*", " ", str(val)).strip()[:limit]
+    if re.search(r"[\x00-\x1f\x7f]", text):
+        raise ValueError("control characters are not allowed")
+    return text
+
+
+# The title template comes from the network (Moonraker's API has no login on
+# the LAN) and Moonraker runs as root, so it is rendered in Jinja's sandbox and
+# only as much of Jinja as a title needs: the placeholders, {% if %}, {% set %}
+# and the filters below. No calls, no loops and no sequence repetition, so the
+# work and the memory of a render are bounded by the template's own length.
+TITLE_FILTERS = (
+    "abs", "capitalize", "d", "default", "float", "int", "length", "lower",
+    "round", "string", "title", "trim", "truncate", "upper",
+)
+TITLE_REPLACE_MAX = 4096
+
+if jinja2 is not None:
+    _TITLE_BANNED_NODES = (
+        jinja2.nodes.Call, jinja2.nodes.For, jinja2.nodes.Macro, jinja2.nodes.CallBlock,
+        jinja2.nodes.Include, jinja2.nodes.Import, jinja2.nodes.FromImport,
+        jinja2.nodes.Extends,
+    )
+
+    def _title_replace(value: Any, old: Any, new: Any) -> str:
+        value, old, new = str(value), str(old), str(new)
+        if not old or len(value) * max(1, len(new)) > TITLE_REPLACE_MAX:
+            raise jinja2.sandbox.SecurityError("replace: nothing to look for, or too long")
+        return value.replace(old, new)
+
+    class _TitleEnvironment(jinja2.sandbox.ImmutableSandboxedEnvironment):
+        intercepted_binops = frozenset(["*", "**"])
+
+        def call_binop(self, context: Any, operator: str, left: Any, right: Any) -> Any:
+            numbers = (int, float)
+            if operator != "*" or not (isinstance(left, numbers) and isinstance(right, numbers)):
+                raise jinja2.sandbox.SecurityError(f"{operator} is for two numbers only")
+            return left * right
+
+        def call(__self, __context: Any, __obj: Any, *args: Any, **kwargs: Any) -> Any:  # noqa: N805
+            raise jinja2.sandbox.SecurityError("calls are not allowed in a title template")
+
+    _title_env = _TitleEnvironment(autoescape=False)
+    _title_env.globals.clear()
+    _title_env.filters = {n: _title_env.filters[n] for n in TITLE_FILTERS}
+    _title_env.filters["replace"] = _title_replace
+    _title_cache: Dict[str, Any] = {}
+
+    def _compile_title(tpl: str) -> Any:
+        """The compiled template; ValueError says why it is refused."""
+        hit = _title_cache.get(tpl)
+        if hit is not None:
+            return hit
+        try:
+            tree = _title_env.parse(tpl)
+            banned = next(tree.find_all(_TITLE_BANNED_NODES), None)
+            if banned is not None:
+                raise ValueError(
+                    f"{type(banned).__name__.lower()} is not allowed in a title template")
+            compiled = _title_env.from_string(tpl)
+        except jinja2.TemplateError as e:
+            raise ValueError(f"title template: {e}") from None
+        if len(_title_cache) >= 8:
+            _title_cache.clear()
+        _title_cache[tpl] = compiled
+        return compiled
 
 
 def _truthy(v: Any) -> bool:
@@ -303,9 +376,13 @@ class K1osStream:
                 if not re.fullmatch(r"[A-Za-z0-9]{0,64}", val):
                     raise ValueError("client_id looks wrong")
             elif key == "category":
-                val = str(val).strip()[:100]
+                val = _one_line(val, 100)
+            elif key == "title_template":
+                val = _one_line(val, 400)
+                if jinja2 is not None and val:
+                    _compile_title(val)
             else:
-                val = str(val)[:400]
+                val = _one_line(val, 400)
             out[SETTING_KEYS[key]] = val
         return out
 
@@ -770,7 +847,7 @@ class K1osStream:
         if jinja2 is None:
             return " ".join(plain(tpl).split())
         try:
-            text = jinja2.Template(tpl, autoescape=False).render(**fields)
+            text = _compile_title(tpl).render(**fields)
         except Exception as e:
             logging.info(f"k1os_stream: title template error: {e}")
             text = plain(DEFAULT_TEMPLATE)
