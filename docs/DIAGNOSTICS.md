@@ -10,7 +10,7 @@ The watchdog watches systemd only. A system that is merely very slow keeps pingi
 
 ## The journal survives a reboot
 
-The journal lives in RAM. `k1os-bootlog` writes this boot's journal to `/usr/data/k1os/log/journal-last.txt` 30 s and 5 min after boot (later lines go to the log server and to `k1os-trace`), and on its first run after a boot moves the previous file to `journal-prev.txt`:
+The journal lives in RAM (`/run/log/journal`) and keeps at most 16 MiB there, about 14 hours on a day with prints and 20 at rest; older lines are dropped. `k1os-bootlog` writes this boot's journal to `/usr/data/k1os/log/journal-last.txt` 30 s and 5 min after boot (later lines go to the log server and to `k1os-trace`), and on its first run after a boot moves the previous file to `journal-prev.txt`:
 
 ```bash
 ssh root@<ip> tail -n 50 /usr/data/k1os/log/journal-prev.txt

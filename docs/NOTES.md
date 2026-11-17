@@ -150,6 +150,14 @@ A kernel without PREEMPT_RT (6.6.162) stopped without a message within two secon
 - `fptest` does more rounds a minute under this kernel than it did on 11 November under the SDK kernel 6.6 with PREEMPT_RT: about 68,000 at 912 MHz against 51,000. The build of the program may differ between the two days, so this is not a measurement of the kernels.
 - The kernel built with that device tree says "CPU clock set to 912 MHz" at boot and leaves the clock unit's two registers exactly as the search's `cpuclk` had them at that clock (CPCCR 0x9a094410, CPAPCR 0x0250086d).
 
+## 17 November 2026: the journal filled /run
+
+- After 39 hours of uptime on Datel OS 0.7.0, `systemctl daemon-reload` refused to run: "not enough space available on /run/systemd/. Currently, 6.0M are free, but a safety buffer of 16.0M is enforced." `/run` is the tmpfs that systemd mounts at 20 % of the RAM, 43,040 KiB. The journal in `/run/log/journal` held 35.4 MiB of it in six files, everything else 0.5 MiB. So no unit file or drop-in could be loaded until the next boot.
+- Nothing in the layer set the journal's size. poky's `systemd-conf` installs `/usr/lib/systemd/journald.conf.d/00-systemd-conf.conf` with `RuntimeMaxUse=64M`, more than all of `/run`. journald then makes each file 8 MiB (an eighth of the limit) and stops only at its default keep-free of 5 % of the file system, 2.1 MiB: "Runtime Journal (...) is 8.0M, max 39.9M, 31.9M free" at boot. Without poky's line journald would have kept to 10 % of `/run`, 4.2 MiB.
+- What goes in: about 1,500 lines an hour at rest and up to 2,700 an hour in the prints of 16 November, 0.6 to 1 MiB of journal files an hour. At rest nearly all of them are two lines every 5 s: k1os-stream's statistics and, since 16 November 02:13 CET, `klipper_mcu`'s "Got error -1 in write: (11)Resource temporarily unavailable". The cause of the second was not looked for.
+- Reading all of it is not free: an SSH session that ran `journalctl -b` over those 35 MiB into `grep` used 17.7 s of CPU.
+- The image's own drop-in, whose name sorts after poky's, now sets `RuntimeMaxUse=16M`; journald's files are then 2 MiB. By journald's arithmetic `/run` keeps about 25 MiB free, 9 MiB more than a reload needs. Not yet measured on the printer.
+
 ## Phases
 
 0. **Rescue:** eMMC backup and USB mask-ROM boot. Backup done; USB boot described, not verified on S12.
