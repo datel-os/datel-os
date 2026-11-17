@@ -4,13 +4,19 @@
 
 Open firmware for the Creality K1, built from source with Yocto: Linux 6.18, zklippy (Kalico's host as one Zig binary) with open firmware for all three MCUs, Moonraker, Mainsail, camera streaming, hardware-encoded timelapse and Twitch live streaming. The stock bootloader stays in place and the second eMMC slot always holds a way back.
 
-**Pre-release for developers.** It runs on the author's K1 in both A/B slots. The display does not work yet, recovery from a kernel that fails to boot needs a USB cable, and everything is verified on one printer. Version 0.8.0 runs **zklippy** as the Klipper host: Kalico's host ported module by module to one Zig binary, in place of Kalico's Python host, which left the image. It also keeps the journal to 16 MiB of `/run`, has no unused Linux host MCU any more, and its health line reports the RAM tmpfs holds. The kernel is 0.7.0's.
+**Pre-release for developers.** It runs on the author's K1 in both A/B slots. The display does not work yet, recovery from a kernel that fails to boot needs a USB cable, and everything is verified on one printer. Since version 0.8.0 the Klipper host is **zklippy**: Kalico's host ported module by module to one Zig binary, in place of Kalico's Python host, which left the image. 0.8.0 also keeps the journal to 16 MiB of `/run`, has no unused Linux host MCU any more, and its health line reports the RAM tmpfs holds. The kernel is 0.7.0's.
+
+Version 0.8.1 is 0.8.0 with two changes around the camera:
+* The graph and statistics panels in the WebRTC and Twitch picture cost half the CPU they did: with them on, at 1280×720 and 30 fps, the camera daemon uses 7.6 % of one core instead of 15.0 %.
+* Mainsail's WebRTC camera no longer keeps the camera's two viewer places taken after its view is gone, which left the camera dark in every other window until the page was reloaded ([Viewer limits](docs/CAMERA.md#viewer-limits)).
 
 What ran before the release, on the reference printer on 17 November 2026:
 * An 89-minute print under zklippy, started by hand on 0.7.0 with the same zklippy binary. It completed with the steps never less than 3.0 s ahead and no page of the program read back from the disk.
-* This release's image, after that print: it booted from the second slot and was kept, with zklippy ready in 10 s, its memory locked, no Moonraker warning and no failed unit.
+* Version 0.8.0, as built from its sources before its release: it booted from the second slot and was kept, with zklippy ready in 10 s, its memory locked, no Moonraker warning and no failed unit, and an 18-minute print completed on it.
+* The camera daemon with 0.8.1's drawing of the panels, built from the same sources outside the image and started in place of 0.8.0's: through that 18-minute print with two WebRTC viewers, with no frame left out, and at rest on the released 0.8.0 in turns with its own daemon, which gave the two figures above.
+* Mainsail's player with its new methods, in a desktop browser against the printer's camera, with Mainsail's files served from a computer: a view left while its connection was being set up took a viewer place with the release's player and none with this one.
 
-**No print ran on this image itself before the release.** Read [Limitations](#limitations) before installing.
+**This release's image was not started on the printer before the release**, and the player was not tried in OrcaSlicer's device tab, where the taken places were first seen. Read [Limitations](#limitations) before installing.
 
 ## What works
 
@@ -40,7 +46,7 @@ Ordered by how much it hurts.
 6. **Wi-Fi is 2.4 GHz only.** The camera stream can saturate a weak link; the default is 8 fps.
 7. **The CPU is slower than on stock.** At 1200 MHz the reference printer computes wrong floating point results and Kalico shuts down in the middle of a print, so the kernel runs it at 912 MHz, the highest clock that stayed clean in the test (816 MHz up to version 0.6.0). The margin is thin: at 936 MHz, the next step, the test gave a wrong result within a minute ([the measurements](docs/DIAGNOSTICS.md#cpu-clock-and-floating-point)). Prints at 912 MHz since 16 November 2026 finished, the longest 3 h 40 min; one at five times the sliced speed stopped with "Timer too close", for a reason not settled. A print at several times the sliced speed with two camera viewers and the Twitch stream at once can use both CPUs up; the Klipper host is set to tolerate stalls of up to three seconds.
 8. **zklippy is new.**
-   * On the reference printer it heats, homes, probes and meshes, and one long print (89 minutes) completed under it.
+   * On the reference printer it heats, homes, probes and meshes, and two prints completed under it: one of 89 minutes, and one of 18 minutes on version 0.8.0's image.
    * Its first long print stopped after 131 s, when 40 MB written to the eMMC stalled the host for 2.4 s. Since then zklippy locks its memory and reads the G-code a megabyte ahead in a thread of its own; the 89-minute print ran so.
    * A print at several times the sliced speed, the reason for zklippy, has not run under it yet.
    * Kalico's Python host is not in the image. The way back to it is the other slot, or version 0.7.0.
