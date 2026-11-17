@@ -52,7 +52,9 @@ struct proc {
 };
 
 static struct proc procs[] = {
-	{ "klippy", "klippy.py", 0, 0, 0, 0 },
+	/* the Klipper host, either one: /usr/share/klipper/zklippy or
+	 * /usr/share/klipper/klippy/klippy.py */
+	{ "klippy", "/usr/share/klipper/", 0, 0, 0, 0 },
 	{ "moonraker", "moonraker.py", 0, 0, 0, 0 },
 	{ "camera", "k1os-camera", 0, 0, 0, 0 },
 	{ "nginx", "nginx: worker", 0, 0, 0, 0 },

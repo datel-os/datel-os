@@ -27,6 +27,9 @@ IMAGE_INSTALL = " \
 # own firmware for the three MCUs, Moonraker, Mainsail on nginx and Guppy
 # Screen on the touch display.
 IMAGE_INSTALL += "kalico moonraker mainsail guppyscreen nginx"
+# The Klipper host klipper.service runs: zklippy, Kalico's host ported to one
+# Zig binary; Kalico stays as the way back (k1os-klipper-host kalico).
+IMAGE_INSTALL += "zklippy"
 # Camera: MJPEG and snapshots, H.264 over WebRTC, the Twitch stream; one daemon.
 IMAGE_INSTALL += "k1os-camera"
 # Flight recorder: what the system did in the minutes before Klipper stopped.
