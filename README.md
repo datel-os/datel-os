@@ -33,7 +33,7 @@ Ordered by how much it hurts.
 5. **Verified on one printer:** board CR4CU220812S11, panel `lcm_id=3`.
 6. **Wi-Fi is 2.4 GHz only.** The camera stream can saturate a weak link; the default is 8 fps.
 7. **The CPU is slower than on stock.** At 1200 MHz the reference printer computes wrong floating point results and Kalico shuts down in the middle of a print, so the kernel runs it at 912 MHz, the highest clock that stayed clean in the test (816 MHz up to version 0.6.0). The margin is thin: at 936 MHz, the next step, the test gave a wrong result within a minute, and no print has run at 912 MHz yet ([the measurements](docs/DIAGNOSTICS.md#cpu-clock-and-floating-point)). A print at several times the sliced speed with two camera viewers and the Twitch stream at once can use both CPUs up; Kalico is set to tolerate stalls of up to three seconds.
-8. **zklippy is new.** It heats, homes, probes, meshes and printed a one-layer test on the reference printer; a long print has not finished under it yet. The first one stopped after 131 s when 40 MB written to the eMMC stalled the host for 3.3 s. `k1os-klipper-host kalico` brings Kalico back.
+8. **zklippy is new.** It heats, homes, probes, meshes and printed a one-layer test on the reference printer; a long print has not finished under it yet. The first one stopped after 131 s when 40 MB written to the eMMC stalled the host for 3.3 s; since then zklippy locks its memory and reads the G-code a megabyte ahead in a thread of its own, not yet tried in a long print. `k1os-klipper-host kalico` brings Kalico back.
 
 ## Install
 

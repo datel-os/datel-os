@@ -15,7 +15,7 @@ SRC_URI = "git://git@github.com/zales/k1-zklippy.git;protocol=ssh;branch=main \
            file://klipper-host \
            file://k1os-klipper-host \
            file://10-zklippy.conf"
-SRCREV = "680aea604e4fcb0f10ceb453873d01b2a87abddf"
+SRCREV = "7cf001e1c32a081eadf81eaff4890b882e7c6da3"
 PV = "0.1+git${SRCPV}"
 S = "${WORKDIR}/git"
 
