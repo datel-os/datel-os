@@ -1,0 +1,24 @@
+[Unit]
+Description=Klipper 3D printer host (zklippy on the Creality K1)
+Requires=k1os-datadir.service
+After=k1os-datadir.service network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/share/klipper/zklippy /usr/data/k1os/printer_data/config/printer.cfg \
+    -l /usr/data/k1os/printer_data/logs/klippy.log \
+    -a /tmp/klippy_uds
+Restart=always
+RestartSec=10
+# Real time above every other process, below the kernel's interrupt threads
+# (50): zklippy ran so in all its tests on the printer. No ResetOnFork: its
+# own threads keep it. It locks its memory at start (mlockall), which root
+# may without a LimitMEMLOCK.
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=20
+Nice=-10
+# Out of memory, the print is the last thing to lose (the camera goes first).
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=multi-user.target

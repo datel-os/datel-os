@@ -23,10 +23,11 @@ IMAGE_INSTALL = " \
     k1os-base datel-branding \
 "
 
-# Printing stack: Kalico (pellcorp's tree with the K1 load cell probe) with our
-# own firmware for the three MCUs, Moonraker, Mainsail on nginx and Guppy
-# Screen on the touch display.
-IMAGE_INSTALL += "kalico moonraker mainsail guppyscreen nginx"
+# Printing stack: zklippy, Kalico's host (pellcorp's tree with the K1 load
+# cell probe) ported to one Zig binary, with our own firmware for the three
+# MCUs (through kalico-common), Moonraker, Mainsail on nginx and Guppy Screen
+# on the touch display. Kalico's Python host is not in the image.
+IMAGE_INSTALL += "zklippy moonraker mainsail guppyscreen nginx"
 # Camera: MJPEG and snapshots, H.264 over WebRTC, the Twitch stream; one daemon.
 IMAGE_INSTALL += "k1os-camera"
 # Flight recorder: what the system did in the minutes before Klipper stopped.

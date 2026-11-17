@@ -12,6 +12,8 @@ JOBS=4 ./build.sh                            # bitbake threads and make jobs
 
 The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/images/creality-k1/`: `xImage` (kernel), `k1-image-creality-k1.rootfs.squashfs-xz` (system) and `CR4CU220812S11_ota_img_V9.X.Y.Z.img` (the stock updater's package format). `TAG=vX.Y.Z tools/release.sh collect` copies them out of the volume under their release names; `tools/flash-slot2.sh` installs them, see [INSTALL.md](INSTALL.md).
 
+zklippy comes from the private repository `zales/k1-zklippy`, which bitbake fetches over SSH. `build.sh` forwards the SSH agent of whoever runs it into the build container (Docker Desktop's on the Mac); the agent needs a key that may read that repository (`ssh -T git@github.com` greets you by name). GitHub's host keys are pinned in `recipes-printer/zklippy/files/github_known_hosts`. The release runner on the NAS has no such key yet: until it gets one (a read-only deploy key of the repository, which kas takes as `SSH_PRIVATE_KEY_FILE`), a release build stops at zklippy's fetch. A public release with zklippy in it also needs zklippy's source to be public (GPL-3.0).
+
 ## Layer layout
 
 `meta-creality-k1/`:
@@ -25,9 +27,9 @@ The log is `build-last.log` in the volume. Images land in `build/tmp/deploy/imag
 | `recipes-core/k1os-base/` | Datel OS services: data directory setup, trial boot and slot confirmation, Wi-Fi MAC, camera and printer-name seeding, `k1os-slot` |
 | `recipes-core/images/k1-image.bb` | The image |
 | `recipes-core/datel-branding/` | Hostname, MOTD, prompt, Mainsail logo |
-| `recipes-printer/` | `kalico`, `k1-mcu-firmware`, `k1os-mcu-update`, `moonraker`, `mainsail`, `guppyscreen`, `k1os-camera`, `moonraker-timelapse`, `k1os-helix`, `k1os-stream` |
+| `recipes-printer/` | `zklippy`, `kalico` (`kalico-common` goes into the image: Klipper's example configs and docs and the configuration conversion; `kalico`, the Python host, does not), `k1-mcu-firmware`, `k1os-mcu-update`, `moonraker`, `mainsail`, `guppyscreen`, `k1os-camera`, `moonraker-timelapse`, `k1os-helix`, `k1os-stream` |
 | `recipes-httpd/nginx/` | Mainsail and camera proxy configuration |
-| `recipes-devtools/zig/` | The Zig compiler (official binary) that builds `k1os-camera` and `k1os-helix` |
+| `recipes-devtools/zig/` | The Zig compiler (official binary) that builds `zklippy`, `k1os-camera` and `k1os-helix` |
 | `recipes-bsp/k1-wifi-nvram/` | Wi-Fi module calibration file |
 | `recipes-devtools/gcc/` | gcc built for FP64 and NaN 2008 |
 | `recipes-python/`, `recipes-connectivity/` | Python dependencies of Moonraker, sshd on a read-only root |

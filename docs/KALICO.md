@@ -1,12 +1,13 @@
 # Kalico and the MCU firmware
 
-Datel OS prints with Kalico and loads open firmware into all three MCUs; Creality's Klipper and the stock MCU firmware are not part of the image.
+Datel OS prints with zklippy, Kalico's host ported to one Zig binary, and loads open firmware into all three MCUs. Kalico's own Python host, Creality's Klipper and the stock MCU firmware are not part of the image.
 
 ## Components
 
 | Part | Source | Notes |
 |---|---|---|
-| Host | [pellcorp/kalico](https://github.com/pellcorp/kalico), branch `nov2026` | Kalico with the K1 additions: strain gauge probe (`load_cell_probe`, `hx711s`), MCU bootloader entry |
+| Host | `zales/k1-zklippy` (private for now), branch `main` | zklippy: Kalico's host ported to Zig module by module, with the same G-code, the same messages to the MCUs and the same Moonraker API, in one binary instead of Python. Built by the image with `-Dk1 -Doptimize=ReleaseFast` |
+| Kalico | [pellcorp/kalico](https://github.com/pellcorp/kalico), branch `nov2026` | Kalico with the K1 additions: strain gauge probe (`load_cell_probe`, `hx711s`), MCU bootloader entry. zklippy is its port; the image takes Kalico's example configs and docs from it (`kalico-common`), not its Python host |
 | MCU firmware | [zales/k1-kalico-firmware](https://github.com/zales/k1-kalico-firmware), branch `feat/nov2026`: pellcorp's `nov2026` plus twelve commits | Creality's GD32 port, built with the `gcc-arm-none-eabi` toolchain from meta-arm, with the header the Creality bootloader expects. The fork puts the scheduler back to upstream (a timer that is already late shuts the MCU down; Creality's port moved it 2 µs ahead and carried on), drops the port's debug counters and links with GCC 13 |
 | Flashing | `k1os-mcu-update` (own) | Talks to the Creality serial bootloader on all three ports at once right after boot, writes a firmware only when the version differs, then starts the application |
 | Configuration | `k1os-kalico-config` (own) | Converts the stock `printer.cfg` once on the first start, backup next to it as `config.creality-<date>` |
@@ -14,6 +15,12 @@ Datel OS prints with Kalico and loads open firmware into all three MCUs; Crealit
 MCUs: mainboard GD32F303xE (`/dev/ttyS7`), nozzle GD32F303xB (`/dev/ttyS1`), bed leveling GD32E230x8 (`/dev/ttyS9`), all at 230400 baud.
 
 Firmware updates happen only on a cold start: the bootloader waits about 15 s after power-on, and a running Klipper cannot be sent into it. After a plain reboot the MCUs keep the firmware they have and `k1os-mcu-update` logs them as skipped; it knows a reboot by the kernel's line about the SoC's last reset (`reset status RSR=… power-on` after a power-on; a restart and the watchdog read differently) and then probes each port for about 2 s instead of 20 s, so the boot does not wait for bootloaders that cannot answer. The bed MCU keeps streaming sensor frames after the host is gone, so its port is never quiet; the probe takes only a plausible version string as a bootloader answer.
+
+## The host: zklippy
+
+`klipper.service` runs `/usr/share/klipper/zklippy` with `printer.cfg`, `klippy.log` and Moonraker's socket, as Kalico's host was run. It runs as a real-time task (`SCHED_FIFO` 20), above every other process and below the kernel's interrupt threads, locks its memory at start (`zklippy: memory locked (mlockall)` in `klippy.log`) and reads the G-code a megabyte ahead in a thread of its own, so that writes to the eMMC do not stall it. zklippy reports `/usr/share/klipper` as `klipper_path`: Moonraker serves Klipper's example configs and docs from there, as with Kalico.
+
+Kalico's Python host is not in the image. The way back to it is the other slot or version 0.7.0.
 
 ## What the configuration conversion does
 
