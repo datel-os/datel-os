@@ -27,7 +27,7 @@ zklippy comes from the private repository `zales/k1-zklippy`, which bitbake fetc
 | `recipes-core/k1os-base/` | Datel OS services: data directory setup, trial boot and slot confirmation, Wi-Fi MAC, camera and printer-name seeding, `k1os-slot` |
 | `recipes-core/images/k1-image.bb` | The image |
 | `recipes-core/datel-branding/` | Hostname, MOTD, prompt, Mainsail logo |
-| `recipes-printer/` | `zklippy`, `kalico`, `k1-mcu-firmware`, `k1os-mcu-update`, `moonraker`, `mainsail`, `guppyscreen`, `k1os-camera`, `moonraker-timelapse`, `k1os-helix`, `k1os-stream` |
+| `recipes-printer/` | `zklippy`, `kalico` (`kalico-common` goes into the image: Klipper's example configs and docs and the configuration conversion; `kalico`, the Python host, does not), `k1-mcu-firmware`, `k1os-mcu-update`, `moonraker`, `mainsail`, `guppyscreen`, `k1os-camera`, `moonraker-timelapse`, `k1os-helix`, `k1os-stream` |
 | `recipes-httpd/nginx/` | Mainsail and camera proxy configuration |
 | `recipes-devtools/zig/` | The Zig compiler (official binary) that builds `zklippy`, `k1os-camera` and `k1os-helix` |
 | `recipes-bsp/k1-wifi-nvram/` | Wi-Fi module calibration file |
