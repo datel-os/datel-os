@@ -156,7 +156,8 @@ A kernel without PREEMPT_RT (6.6.162) stopped without a message within two secon
 - Nothing in the layer set the journal's size. poky's `systemd-conf` installs `/usr/lib/systemd/journald.conf.d/00-systemd-conf.conf` with `RuntimeMaxUse=64M`, more than all of `/run`. journald then makes each file 8 MiB (an eighth of the limit) and stops only at its default keep-free of 5 % of the file system, 2.1 MiB: "Runtime Journal (...) is 8.0M, max 39.9M, 31.9M free" at boot. Without poky's line journald would have kept to 10 % of `/run`, 4.2 MiB.
 - What goes in: about 1,500 lines an hour at rest and up to 2,700 an hour in the prints of 16 November, 0.6 to 1 MiB of journal files an hour. At rest nearly all of them are two lines every 5 s: k1os-stream's statistics and, since 16 November 02:13 CET, `klipper_mcu`'s "Got error -1 in write: (11)Resource temporarily unavailable". The cause of the second was not looked for.
 - Reading all of it is not free: an SSH session that ran `journalctl -b` over those 35 MiB into `grep` used 17.7 s of CPU.
-- The image's own drop-in, whose name sorts after poky's, now sets `RuntimeMaxUse=16M`; journald's files are then 2 MiB. By journald's arithmetic `/run` keeps about 25 MiB free, 9 MiB more than a reload needs. Not yet measured on the printer.
+- The image's own drop-in, whose name sorts after poky's, now sets `RuntimeMaxUse=16M`; journald's files are then 2 MiB. By journald's arithmetic `/run` keeps about 25 MiB free, 9 MiB more than a reload needs.
+- The same setting tried on the running 0.7.0 (a drop-in in `/run/systemd/journald.conf.d/`, journald restarted, the journal rotated): "Runtime Journal (...) is 8.0M, max 16.0M, 8.0M free", nothing vacuumed, the new file 2 MiB, the archived one shrunk from 8 MiB to 3.3 MiB, and `/run` 36.2 MiB free. The stream to the log server went on.
 
 ## Phases
 
