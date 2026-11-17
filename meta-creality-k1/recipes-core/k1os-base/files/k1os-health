@@ -13,7 +13,11 @@ mem=$(awk '/^MemAvailable:/ {printf "%d", $2 / 1024}' /proc/meminfo)
 swap=$(awk '/^SwapTotal:/ {t = $2} /^SwapFree:/ {f = $2} END {printf "%d", (t - f) / 1024}' /proc/meminfo)
 # share of the last 10 s in which some task waited for memory (PSI)
 psi=$(sed -n 's/^some avg10=\([0-9.]*\).*/\1/p' /proc/pressure/memory 2>/dev/null)
-tmpfs=$(df -k 2>/dev/null | awk '$1 == "tmpfs" || $1 == "devtmpfs" {s += $3} END {printf "%d", s / 1024}')
+# RAM held by tmpfs and other shared memory (Shmem); tmpfs pages pushed out
+# to swap count under swap instead. Not df: it lists a file system once per
+# bind mount (/run three times, /var/volatile five), and on a mount hidden
+# under a later one it reports whatever is mounted on top.
+tmpfs=$(awk '/^Shmem:/ {printf "%d", $2 / 1024}' /proc/meminfo)
 top=$(awk '/^Name:/ {n = $2} /^VmRSS:/ {printf "%d %s\n", $2 / 1024, n}' /proc/[0-9]*/status 2>/dev/null |
       sort -rn | awk 'NR <= 4 {printf "%s%s:%sM", (NR > 1 ? "," : ""), $2, $1}')
 wifi=$(iw dev wlan0 link 2>/dev/null | awk '/signal:/ {print $2 "dBm"}')

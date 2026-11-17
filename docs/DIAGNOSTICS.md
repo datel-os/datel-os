@@ -51,7 +51,7 @@ load=2.16 1.58 1.20 mem_avail=76M swap=0M mem_psi=0.00 tmpfs=17M top=python3:37M
 | `load` | load average over 1, 5 and 15 minutes (two cores) |
 | `mem_avail`, `swap` | memory still available, swap in use |
 | `mem_psi` | share of the last 10 s in which some process waited for memory |
-| `tmpfs` | RAM held by tmpfs; the journal is in there |
+| `tmpfs` | RAM held by tmpfs (the journal is in there) and other shared memory, `Shmem` in `/proc/meminfo`; tmpfs pages pushed out to swap count under `swap` |
 | `top` | the four biggest processes by resident memory |
 | `wifi` | signal of the link; below about -80 dBm the camera stream starts to suffer |
 | `print` | Klipper's print state |
