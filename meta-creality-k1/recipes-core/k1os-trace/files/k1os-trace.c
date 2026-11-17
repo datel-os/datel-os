@@ -52,8 +52,8 @@ struct proc {
 };
 
 static struct proc procs[] = {
-	/* the Klipper host, either one: /usr/share/klipper/zklippy or
-	 * /usr/share/klipper/klippy/klippy.py */
+	/* the Klipper host: /usr/share/klipper/zklippy, or Kalico's
+	 * /usr/share/klipper/klippy/klippy.py in an image that has it */
 	{ "klippy", "/usr/share/klipper/", 0, 0, 0, 0 },
 	{ "moonraker", "moonraker.py", 0, 0, 0, 0 },
 	{ "camera", "k1os-camera", 0, 0, 0, 0 },

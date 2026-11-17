@@ -20,7 +20,16 @@ S = "${WORKDIR}/git"
 
 inherit python3native systemd
 
-SYSTEMD_SERVICE:${PN} = "klipper.service k1os-kalico-config.service"
+# Two packages. kalico-common is what any Klipper host on the K1 needs and
+# what the image installs: Klipper's example configs and docs (Moonraker
+# serves both from klipper_path), the conversion of the stock configuration
+# (k1os-kalico-config, k1os_kalico.cfg) and the MCU firmware. kalico is
+# Kalico's own Python host with its klipper.service; zklippy replaces it in
+# the image.
+PACKAGES =+ "${PN}-common"
+SYSTEMD_PACKAGES = "${PN} ${PN}-common"
+SYSTEMD_SERVICE:${PN} = "klipper.service"
+SYSTEMD_SERVICE:${PN}-common = "k1os-kalico-config.service"
 
 KLIPPER_DIR = "${datadir}/klipper"
 
@@ -60,10 +69,13 @@ do_install() {
     install -m 0644 ${WORKDIR}/k1os_kalico.cfg ${D}${sysconfdir}/k1os/k1os_kalico.cfg
 }
 
-FILES:${PN} += "${KLIPPER_DIR} ${systemd_system_unitdir} ${libexecdir}/k1os ${sysconfdir}/k1os"
+FILES:${PN}-common = "${KLIPPER_DIR}/config ${KLIPPER_DIR}/docs \
+    ${libexecdir}/k1os ${sysconfdir}/k1os ${systemd_system_unitdir}/k1os-kalico-config.service"
+FILES:${PN} += "${KLIPPER_DIR}/klippy ${systemd_system_unitdir}/klipper.service"
 
+RDEPENDS:${PN}-common = "k1os-base python3-core python3-shell k1-mcu-firmware"
 RDEPENDS:${PN} += " \
-    k1os-base \
+    ${PN}-common \
     python3-modules \
     python3-cffi \
     python3-greenlet \
@@ -71,5 +83,6 @@ RDEPENDS:${PN} += " \
     python3-markupsafe \
     python3-pyserial \
     python3-numpy \
-    k1-mcu-firmware \
 "
+# zklippy brings its own klipper.service
+RCONFLICTS:${PN} = "zklippy"
