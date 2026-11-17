@@ -50,8 +50,12 @@ static void fingerprint_of(const mbedtls_x509_crt *crt, char out[FINGERPRINT_LEN
 {
     unsigned char digest[32];
     mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), crt->raw.p, crt->raw.len, digest);
+    /* 32 times "AA:" and snprintf's NUL are one byte more than out holds:
+     * the last colon is the one that is left out. */
+    char text[3 * 32 + 1];
     for (int i = 0; i < 32; i++)
-        snprintf(out + 3 * i, 4, "%02X:", digest[i]);
+        snprintf(text + 3 * i, 4, "%02X:", digest[i]);
+    memcpy(out, text, FINGERPRINT_LEN);
     out[FINGERPRINT_LEN] = 0;
 }
 
