@@ -8,7 +8,6 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=1ebbd3e34237af26da5dc08a4e440464"
 
 SRC_URI = "git://github.com/pellcorp/kalico.git;protocol=https;branch=nov2026 \
            file://klipper.service \
-           file://klipper-mcu.service \
            file://k1os_kalico.cfg \
            file://k1os-kalico-config \
            file://k1os-kalico-config.service \
@@ -21,15 +20,17 @@ S = "${WORKDIR}/git"
 
 inherit python3native systemd
 
-SYSTEMD_SERVICE:${PN} = "klipper.service klipper-mcu.service k1os-kalico-config.service"
+SYSTEMD_SERVICE:${PN} = "klipper.service k1os-kalico-config.service"
 
 KLIPPER_DIR = "${datadir}/klipper"
 
+# No Linux host MCU (klipper_mcu) is built. On the stock K1 only [mcu rpi]
+# used one, for Creality's EEPROM module [bl24c16f], and k1os-kalico-config
+# removes both. Started anyway, nobody read its pseudo-tty: its stats report
+# every 5 s filled the tty's buffers about 2 h after boot, and from then on
+# each report was a refused write and a line in the journal.
 do_configure() {
     rm -f ${S}/klippy/chelper/c_helper.so
-    # Linux host MCU configuration shipped by the fork (.config.host).
-    cp ${S}/.config.host ${S}/.config
-    oe_runmake -C ${S} PYTHON=python3 olddefconfig
 }
 
 do_compile() {
@@ -37,10 +38,6 @@ do_compile() {
     srcs=$(python3 -c 'import re;print(" ".join(re.findall(r"[\x27\"]([A-Za-z0-9_]+\.c)[\x27\"]", re.search(r"SOURCE_FILES = \[(.*?)\]",open("__init__.py").read(),re.S).group(1))))')
     ${CC} ${CFLAGS} ${LDFLAGS} -Wall -O2 -shared -fPIC -flto -fwhole-program -fno-use-linker-plugin \
         -o c_helper.so $srcs
-
-    cd ${S}
-    oe_runmake PYTHON=python3 CC="${CC}" CPP="${CPP}" LD="${LD}" AS="${AS}" \
-        OBJCOPY="${OBJCOPY}" OBJDUMP="${OBJDUMP}" STRIP="${STRIP}" out/klipper.elf
 }
 
 do_install() {
@@ -57,17 +54,13 @@ do_install() {
     # Without a git checkout Klipper reads its version from .version
     echo "kalico-nov2026-g${@d.getVar('SRCREV')[:8]}" > ${D}${KLIPPER_DIR}/klippy/.version
 
-    install -d ${D}${bindir}
-    install -m 0755 ${S}/out/klipper.elf ${D}${bindir}/klipper_mcu
-
     install -d ${D}${systemd_system_unitdir} ${D}${libexecdir}/k1os ${D}${sysconfdir}/k1os
-    install -m 0644 ${WORKDIR}/klipper.service ${WORKDIR}/klipper-mcu.service ${WORKDIR}/k1os-kalico-config.service ${D}${systemd_system_unitdir}/
+    install -m 0644 ${WORKDIR}/klipper.service ${WORKDIR}/k1os-kalico-config.service ${D}${systemd_system_unitdir}/
     install -m 0755 ${WORKDIR}/k1os-kalico-config ${D}${libexecdir}/k1os/kalico-config
     install -m 0644 ${WORKDIR}/k1os_kalico.cfg ${D}${sysconfdir}/k1os/k1os_kalico.cfg
 }
 
 FILES:${PN} += "${KLIPPER_DIR} ${systemd_system_unitdir} ${libexecdir}/k1os ${sysconfdir}/k1os"
-INSANE_SKIP:${PN} += "already-stripped ldflags"
 
 RDEPENDS:${PN} += " \
     k1os-base \
