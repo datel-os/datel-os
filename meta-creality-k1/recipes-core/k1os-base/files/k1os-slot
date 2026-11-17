@@ -124,7 +124,9 @@ case "$1" in
         r=$(running)
         [ "$r" = unknown ] && { echo "k1os-slot: unknown root in $CMDLINE, nothing kept" >&2; exit 1; }
         # the name first, whole, then the marker
-        printf '%s\n' "$r" > "$KEEP.new" && mv "$KEEP.new" "$KEEP" && sync && write "$r" ;;
+        printf '%s\n' "$r" > "$KEEP.new" && mv "$KEEP.new" "$KEEP" || exit 1
+        sync
+        write "$r" ;;
     release)
         o=$(other)
         [ "$o" = unknown ] && { echo "k1os-slot: unknown root in $CMDLINE, nothing released" >&2; exit 1; }

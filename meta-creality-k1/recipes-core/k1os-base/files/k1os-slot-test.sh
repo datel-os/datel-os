@@ -73,10 +73,10 @@ for cmd in trial confirm keep release; do
     echo ota:kernel2 > "$T/boot-keep"
     run $cmd; is "unknown root: $cmd leaves the marker" "$(marker)" ota:kernel2
 done
-before=$(cksum < "$T/p1")
+before=$(md5sum < "$T/p1")
 is "the marker block is 512 bytes, text, two newlines, zeros" \
     "$(wc -c < "$T/p1" | tr -d ' ') $(dd if="$T/p1" bs=1 skip=11 count=2 2>/dev/null | od -An -tx1 | tr -d ' ')" "512 0a0a"
-is "p1 untouched by the unknown root" "$(cksum < "$T/p1")" "$before"
+is "p1 untouched by the unknown root" "$(md5sum < "$T/p1")" "$before"
 
 [ "$fails" = 0 ] && echo "k1os-slot: all tests passed" || echo "k1os-slot: $fails FAILED"
 [ "$fails" = 0 ]
