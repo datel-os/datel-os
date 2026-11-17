@@ -19,7 +19,16 @@
  * connection's events count, and a player that is gone does not restart. A
  * network error is retried like an error answer, five seconds later, so the
  * view does not stay dark after a short outage. Class body, minified
- * Mainsail around it: no imports of its own. */
+ * Mainsail around it: no imports of its own.
+ *
+ * This file goes into the build as it is, so it keeps to the syntax the
+ * release is lowered to: no `?.` and no `??`, which a browser from before
+ * 2020 cannot read (the whole player would fail to load there, where the
+ * release's own worked). patch-webrtc-player.py refuses the file otherwise.
+ *
+ * webrtc-player-test.mjs runs these methods in Node, with stand-ins for the
+ * browser, through the cases above:
+ *   node webrtc-player-test.mjs patched webrtc-player.js */
 async start() {
 	this.clearRestart()
 	if (this.gone) return
@@ -61,7 +70,8 @@ async start() {
 }
 async onIceServers(offer, session) {
 	if (session !== this.streamSession) return
-	const pc = new RTCPeerConnection({ iceServers: offer.iceServers ?? [], sdpSemantics: `unified-plan` })
+	const iceServers = offer.iceServers == null ? [] : offer.iceServers
+	const pc = new RTCPeerConnection({ iceServers, sdpSemantics: `unified-plan` })
 	if (this.pc) this.pc.close()
 	this.pc = pc
 	pc.addTransceiver(`video`, { direction: `recvonly` })
@@ -136,7 +146,8 @@ async onIceCandidate(e, id, pc) {
 	}
 }
 onConnectionStateChange() {
-	this.status = this.pc?.connectionState ?? `connecting`
+	const state = this.pc == null ? null : this.pc.connectionState
+	this.status = state == null ? `connecting` : state
 	this.log(`State: ${this.status}`)
 	if ([`failed`, `disconnected`].includes(this.status)) this.restartStream(5e3)
 }
