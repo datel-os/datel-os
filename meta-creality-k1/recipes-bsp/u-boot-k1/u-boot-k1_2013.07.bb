@@ -65,6 +65,11 @@ do_compile() {
     rm -rf ${WORKDIR}/build-out
     for cfg in ${UBOOT_K1_CONFIGS}; do
         oe_runmake distclean
+        # The version by hand. Left alone the tree asks git, and what bitbake
+        # unpacks is the files of SRCREV under a HEAD at the branch's tip: the
+        # binaries then name a commit they were not built from, and change
+        # when the branch moves.
+        echo "-k1-g$(echo ${SRCREV} | cut -c1-9)" > ${S}/.scmversion
         oe_runmake -j1 ${cfg}_config
         oe_runmake
         install -d ${WORKDIR}/build-out/${cfg}
