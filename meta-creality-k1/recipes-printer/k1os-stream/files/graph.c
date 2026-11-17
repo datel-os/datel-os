@@ -46,7 +46,7 @@ static const struct color WARN   = { 190, 100, 180 };   /* a value worth a look,
 int graph_init(struct graph *g, unsigned width, unsigned height, unsigned bar_h,
                enum graph_corner corner)
 {
-	unsigned margin = 16, i;
+	unsigned margin = 16;
 
 	memset(g, 0, sizeof *g);
 	if (width < GRAPH_W + 2 * margin || height < GRAPH_H + bar_h + 2 * margin) {
@@ -55,17 +55,9 @@ int graph_init(struct graph *g, unsigned width, unsigned height, unsigned bar_h,
 	g->stride = width;
 	g->x0 = (corner == GRAPH_TL || corner == GRAPH_BL) ? margin : width - GRAPH_W - margin;
 	g->y0 = (corner == GRAPH_TL || corner == GRAPH_TR) ? margin : height - bar_h - GRAPH_H - margin;
-	g->x0 &= ~1u;
-	g->y0 &= ~1u;
-	/* the picture under the panel keeps a third of its light */
-	for (i = 0; i < 256; i++) {
-		g->dark[i] = 16 + (i * 5) / 16;
-	}
+	g->x0 &= ~3u;               /* whole words of the frame's rows */
+	g->y0 &= ~1u;               /* whole chroma rows */
 	memset(g->uv, 128, sizeof g->uv);
-	for (i = 0; i < GRAPH_BUFS; i++) {
-		memset(g->bg_luma[i], 16, sizeof g->bg_luma[i]);
-		memset(g->bg_uv[i], 128, sizeof g->bg_uv[i]);
-	}
 	return 0;
 }
 
@@ -80,7 +72,7 @@ int graph_init_beside(struct graph *g, const struct graph *other, unsigned heigh
 	} else {
 		return -1;
 	}
-	memcpy(g, other, sizeof *g);        /* stride, darkening table, cleared planes */
+	memcpy(g, other, sizeof *g);        /* stride, cleared planes */
 	g->x0 = other->x0;
 	g->y0 = y0 & ~1u;
 	return 0;
@@ -97,11 +89,12 @@ static void put(struct graph *g, int x, int y, const struct color *c)
 	}
 	i = (unsigned)y * GRAPH_W + (unsigned)x;
 	g->luma[i] = c->y;
-	g->mask[i] = 1;
+	g->mask[i] = 0xff;
 	i = (unsigned)(y / 2) * GRAPH_W + (unsigned)(x / 2) * 2;
 	g->uv[i] = c->u;
 	g->uv[i + 1] = c->v;
-	g->uvmask[(unsigned)(y / 2) * (GRAPH_W / 2) + (unsigned)(x / 2)] = 1;
+	g->uvmask[i] = 0xff;
+	g->uvmask[i + 1] = 0xff;
 }
 
 static void fill_rect(struct graph *g, int x, int y, int w, int h, const struct color *c)
@@ -364,56 +357,111 @@ void stats_render(struct graph *g, const struct printer_state *st, const struct 
 /* ------------------------------------------------------------------ */
 /* into the frame                                                      */
 
-void graph_blit(struct graph *g, unsigned buf, int fresh, uint8_t *y, uint8_t *uv)
+/* The picture under the panel keeps a third of its light: luma becomes
+ * 16 + 5 * p / 16, chroma 128 + (p - 128) * 5 / 16 (rounded towards zero, as
+ * C divides). These two say it a byte at a time; the frame is done four bytes
+ * at a time in a 32-bit word, and graph_test.c checks that both agree. */
+static inline uint8_t dark_luma(uint8_t p)
 {
-	uint8_t *bgl, *bgc;
-	unsigned r, c;
+	return (uint8_t)(16 + (p * 5) / 16);
+}
 
-	if (buf >= GRAPH_BUFS) {
-		buf = 0;
-	}
-	bgl = g->bg_luma[buf];
-	bgc = g->bg_uv[buf];
-	/* The frame is uncached DMA memory: whole rows are read into the cached
-	 * background copy once per decoded picture, and written back whole. */
-	for (r = 0; r < GRAPH_H; r++) {
-		uint8_t *frame = y + (size_t)(g->y0 + r) * g->stride + g->x0;
-		uint8_t *bg = bgl + r * GRAPH_W;
-		const uint8_t *pl = g->luma + r * GRAPH_W;
-		const uint8_t *pm = g->mask + r * GRAPH_W;
-		uint8_t row[GRAPH_W];
-		if (fresh) {
-			memcpy(row, frame, GRAPH_W);
-			for (c = 0; c < GRAPH_W; c++) {
-				bg[c] = g->dark[row[c]];
+static inline uint8_t dark_chroma(uint8_t p)
+{
+	return (uint8_t)(128 + (((int)p - 128) * 5) / 16);
+}
+
+/* 5 * p / 16 in each byte of w: p / 4 + p / 16, plus one where the two
+ * remainders make a whole, (p % 4) * 4 + p % 16 >= 16. No byte carries into
+ * the next one: every sum stays below 128. */
+static inline uint32_t five_16ths(uint32_t w)
+{
+	uint32_t low = w & 0x0f0f0f0fu;
+	uint32_t whole = ((((low & 0x03030303u) << 2) + low) >> 4) & 0x01010101u;
+	return ((w >> 2) & 0x3f3f3f3fu) + ((w >> 4) & 0x0f0f0f0fu) + whole;
+}
+
+static inline uint32_t dark_luma4(uint32_t w)
+{
+	return five_16ths(w) + 0x10101010u;
+}
+
+/* 128 + (p - 128) * 5 / 16 rounded towards zero is 88 + 5 * p / 16, plus one
+ * below 128 where 5 * p / 16 is not whole, that is where p % 16 != 0. */
+static inline uint32_t dark_chroma4(uint32_t w)
+{
+	uint32_t below = (~w >> 7) & 0x01010101u;
+	uint32_t inexact = (((w & 0x0f0f0f0fu) + 0x0f0f0f0fu) >> 4) & 0x01010101u;
+	return five_16ths(w) + (below & inexact) + 0x58585858u;
+}
+
+/* four bytes of the frame or of the panel, read and written as one */
+typedef uint32_t __attribute__((__may_alias__)) word;
+
+/* Asks for the cache line at p. LLVM leaves __builtin_prefetch out for
+ * MIPS32r2, so the instruction is written out there. */
+static inline void prefetch(const void *p)
+{
+#if defined(__mips__)
+	__asm__ volatile("pref 0, 0(%0)" : : "r"(p));
+#else
+	__builtin_prefetch(p);
+#endif
+}
+
+/* One plane: `rows` rows of GRAPH_W bytes, `stride` apart in the frame, with
+ * the panel's own pixels and mask. While a row is worked on, the next one is
+ * asked for: a new picture comes from the decoder through memory, none of it
+ * is in the cache. */
+static inline __attribute__((always_inline)) void
+blit_words(uint8_t *frame, unsigned stride, unsigned rows, const uint8_t *pixels,
+           const uint8_t *mask, int chroma)
+{
+	unsigned r, c;
+	for (r = 0; r < rows; r++) {
+		word *f = (word *)(void *)(frame + (size_t)r * stride);
+		const word *p = (const word *)(const void *)(pixels + r * GRAPH_W);
+		const word *m = (const word *)(const void *)(mask + r * GRAPH_W);
+		if (r + 1 < rows) {
+			for (c = 0; c < GRAPH_W; c += 32) {
+				prefetch(frame + (size_t)(r + 1) * stride + c);
 			}
 		}
+		for (c = 0; c < GRAPH_W / 4; c++) {
+			uint32_t d = chroma ? dark_chroma4(f[c]) : dark_luma4(f[c]);
+			f[c] = d ^ ((d ^ p[c]) & m[c]);
+		}
+	}
+}
+
+/* the same a byte at a time, for a frame whose rows are not whole words */
+static void blit_bytes(uint8_t *frame, unsigned stride, unsigned rows, const uint8_t *pixels,
+                       const uint8_t *mask, int chroma)
+{
+	unsigned r, c;
+	for (r = 0; r < rows; r++) {
+		uint8_t *f = frame + (size_t)r * stride;
+		const uint8_t *p = pixels + r * GRAPH_W, *m = mask + r * GRAPH_W;
 		for (c = 0; c < GRAPH_W; c++) {
-			row[c] = pm[c] ? pl[c] : bg[c];
+			f[c] = m[c] ? p[c] : chroma ? dark_chroma(f[c]) : dark_luma(f[c]);
 		}
-		memcpy(frame, row, GRAPH_W);
 	}
-	for (r = 0; r < GRAPH_H / 2; r++) {
-		uint8_t *frame = uv + (size_t)(g->y0 / 2 + r) * g->stride + g->x0;
-		uint8_t *bg = bgc + r * GRAPH_W;
-		const uint8_t *pc = g->uv + r * GRAPH_W;
-		const uint8_t *pm = g->uvmask + r * (GRAPH_W / 2);
-		uint8_t row[GRAPH_W];
-		if (fresh) {
-			memcpy(row, frame, GRAPH_W);
-			for (c = 0; c < GRAPH_W; c++) {
-				bg[c] = (uint8_t)(128 + (((int)row[c] - 128) * 5) / 16);
-			}
-		}
-		for (c = 0; c < GRAPH_W / 2; c++) {
-			if (pm[c]) {
-				row[2 * c] = pc[2 * c];
-				row[2 * c + 1] = pc[2 * c + 1];
-			} else {
-				row[2 * c] = bg[2 * c];
-				row[2 * c + 1] = bg[2 * c + 1];
-			}
-		}
-		memcpy(frame, row, GRAPH_W);
+}
+
+void graph_blit(const struct graph *g, int fresh, uint8_t *y, uint8_t *uv)
+{
+	uint8_t *fy, *fuv;
+
+	if (!fresh) {
+		return;                 /* the frame still holds the panel composed into it */
+	}
+	fy = y + (size_t)g->y0 * g->stride + g->x0;
+	fuv = uv + (size_t)(g->y0 / 2) * g->stride + g->x0;
+	if ((((uintptr_t)fy | (uintptr_t)fuv | g->stride) & 3) == 0) {
+		blit_words(fy, g->stride, GRAPH_H, g->luma, g->mask, 0);
+		blit_words(fuv, g->stride, GRAPH_H / 2, g->uv, g->uvmask, 1);
+	} else {
+		blit_bytes(fy, g->stride, GRAPH_H, g->luma, g->mask, 0);
+		blit_bytes(fuv, g->stride, GRAPH_H / 2, g->uv, g->uvmask, 1);
 	}
 }

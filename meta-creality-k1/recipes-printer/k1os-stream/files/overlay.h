@@ -27,7 +27,7 @@ unsigned overlay_bar_height(const struct overlay *o);
 
 /* Text with the small (large = 0, 12x24) or large (16x32) font into a luma
  * buffer of the given stride, white, clipped at x = clip_w; glyph pixels also
- * set mask (same stride) to 1 when it is not NULL. For the graph panel. */
+ * set mask (same stride) to 0xff when it is not NULL. For the graph panel. */
 void overlay_text(int large, uint8_t *y, uint8_t *mask, unsigned stride, unsigned clip_w,
                   unsigned x0, unsigned y0, const char *s);
 /* Width in pixels of s in that font. */

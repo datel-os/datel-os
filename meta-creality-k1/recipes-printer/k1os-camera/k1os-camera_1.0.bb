@@ -19,7 +19,7 @@ SRC_URI = "file://main.zig file://stun.zig file://srtp.zig file://rtp.zig file:/
            file://dtls.c file://cfg/mbedtls_user.h file://build.sh \
            file://k1os-stream.c file://k1os-stream.h file://pace.h file://pace_test.c \
            file://overlay.c file://overlay.h file://moonraker.c file://moonraker.h \
-           file://graph.c file://graph.h file://sysstat.c file://sysstat.h \
+           file://graph.c file://graph.h file://graph_test.c file://sysstat.c file://sysstat.h \
            file://font12x24.h file://font16x32.h file://LICENSE.spleen \
            file://helix.zig file://helix_jpeg.zig file://helix_h264.zig file://helix_cabac.zig \
            file://helix_codec.zig file://helix_c.zig file://helix_codec.h \
@@ -46,6 +46,9 @@ do_compile() {
     # k1os-stream's pace (pace.h), tried on made-up cameras
     zig cc -target ${BUILD_ARCH}-linux-musl -std=gnu11 -Wall -Wextra -O1 pace_test.c -o pace_test
     ./pace_test
+    # the panels' blit a word at a time against the same a byte at a time
+    zig cc -target ${BUILD_ARCH}-linux-musl -std=gnu11 -Wall -Wextra -O1 graph_test.c overlay.c -o graph_test
+    ./graph_test
     MBEDTLS=${WORKDIR}/mbedtls-${MBEDTLS_PV} K1OS_STREAM=${S} K1OS_HELIX=${S} sh ${S}/build.sh
 }
 
