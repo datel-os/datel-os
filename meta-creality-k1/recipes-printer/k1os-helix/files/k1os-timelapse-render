@@ -60,8 +60,15 @@ progflag=
 # The raw H.264 carries no timestamps; h264-to-mp4 gives every picture the
 # same duration, 1/fps.
 fps=${fps%.*}
-if ls "$dir"/frame*.jpg 2>/dev/null | sort | "$ENC" $progflag -q "$qp" -g "${HELIX_GOP:-30}" -o "$h264" - 2>&1 &&
-   "$MP4" "${fps:-30}" "$h264" "$out"; then
+ls "$dir"/frame*.jpg 2>/dev/null | sort | "$ENC" $progflag -q "$qp" -g "${HELIX_GOP:-30}" -o "$h264" - 2>&1
+enc=$?
+# 3: the encoder left out frames it could not decode (a damaged snapshot)
+# and made the video of the others; that video is the result.
+if [ "$enc" = 3 ]; then
+    echo "k1os-timelapse-render: some frames could not be decoded and are left out of the video"
+    enc=0
+fi
+if [ "$enc" = 0 ] && "$MP4" "${fps:-30}" "$h264" "$out"; then
     rm -f "$h264"
     exit 0
 fi
