@@ -823,10 +823,10 @@ int k1os_stream_run(int argc, char **argv, const struct k1os_stream_hooks *hooks
 			}
 			overlay_draw(&ov, helix_codec_luma(codec), helix_codec_chroma(codec));
 			if (gr) {
-				graph_blit(gr, 0, fresh, helix_codec_luma(codec), helix_codec_chroma(codec));
+				graph_blit(gr, fresh, helix_codec_luma(codec), helix_codec_chroma(codec));
 			}
 			if (sp) {
-				graph_blit(sp, 0, fresh, helix_codec_luma(codec), helix_codec_chroma(codec));
+				graph_blit(sp, fresh, helix_codec_luma(codec), helix_codec_chroma(codec));
 			}
 		}
 

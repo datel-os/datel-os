@@ -76,7 +76,7 @@ void overlay_text(int large, uint8_t *y, uint8_t *mask, unsigned stride, unsigne
 				if (glyph[r * bpr + c / 8] & (0x80 >> (c & 7))) {
 					row[c] = Y_TEXT;
 					if (mrow) {
-						mrow[c] = 1;
+						mrow[c] = 0xff;
 					}
 				}
 			}
