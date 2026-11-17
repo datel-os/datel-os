@@ -9,9 +9,17 @@ Development happens in the private repository `zales/k1-yocto`; the public repos
 | File | Contents | Where it goes |
 |---|---|---|
 | `datel-os-vX.Y.Z-xImage` | Linux 6.18 kernel as an `xImage` (a U-Boot image of a kernel that unpacks itself) | mmcblk0p5 / p6 |
-| `datel-os-vX.Y.Z-rootfs.squashfs` | the system with Kalico and its own MCU firmware | mmcblk0p7 / p8 |
+| `datel-os-vX.Y.Z-rootfs.squashfs` | the system with zklippy (Kalico's Klipper host ported to Zig) and its own MCU firmware | mmcblk0p7 / p8 |
 | `datel-os-vX.Y.Z.ota.img` | the same packed as a package for the Creality updater (7z, AES); the version inside is `9.X.Y.Z` | the inactive slot |
+| `datel-os-vX.Y.Z-zklippy-src.tar.gz` | zklippy's source at the commit the recipe names (`SRCREV` in `zklippy_git.bb`), under `zklippy-<12 digits>/` | nowhere: the source the GPL asks for |
 | `SHA256SUMS` | checksums of all files | |
+
+**zklippy.**
+* zklippy comes from the private repository `zales/k1-zklippy`. It is GPL-3.0, so every release carries its source.
+* `collect` makes the archive with `git archive` from bitbake's own clone in the volume, so it holds the bytes the image was built from.
+* `check` requires the archive, with `COPYING`, `build.zig` and `src/main.zig` under the commit's prefix.
+* The runner reads the repository with a read-only deploy key in `~zales/.ssh/k1-zklippy-deploy` on zlsnas: GitHub deploy key 170211863, "zlsnas release runner (read-only)". `build.sh` hands that key into the build container (see DEVELOPMENT.md).
+* Should the key ever be lost, make a new one on the NAS with `ssh-keygen -t ed25519 -N "" -f ~/.ssh/k1-zklippy-deploy`, then add its public half with `gh repo deploy-key add ~/.ssh/k1-zklippy-deploy.pub -R zales/k1-zklippy`.
 
 **What a release never contains:** the bootloader (neither the SPL nor U-Boot, nor the open one from branch `feat/uboot`, which is not verified on the printer), the RTOS `zero.bin` for the third core, and anything for partition `mmcblk0p9`. `tools/release.sh check` refuses every file outside the list above and additionally opens each `.ota.img` to verify that it contains only the kernel and system chunks and that `ota_update.in` installs only `kernel` and `rootfs`. The stock bootloader therefore stays in place and the way back to stock in the other slot keeps working.
 
