@@ -13,7 +13,7 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=1ebbd3e34237af26da5dc08a4e440464"
 # GitHub's host keys pinned in files/github_known_hosts.
 SRC_URI = "git://git@github.com/zales/k1-zklippy.git;protocol=ssh;branch=main \
            file://klipper.service"
-SRCREV = "95ddac3ae0eb1e75820f6cdf3aa90b1d4693ad77"
+SRCREV = "cc119e49d4e7d9f5562cd161875762b356959287"
 PV = "0.1+git${SRCPV}"
 S = "${WORKDIR}/git"
 
