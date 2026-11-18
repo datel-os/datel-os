@@ -5,12 +5,12 @@ drops the port's debug counters and links with GCC 13. Built for the K1 main \
 board (gd32f303xe, mcu0), nozzle board (gd32f303xb, noz0) and bed leveling board \
 (gd32e230x8, bed0, with the load cell probe). The images carry Creality's bootloader \
 header, so the stock serial bootloader accepts them."
-HOMEPAGE = "https://github.com/zales/k1-kalico-firmware"
+HOMEPAGE = "https://github.com/datel-os/k1-kalico-firmware"
 LICENSE = "GPL-3.0-only"
 LIC_FILES_CHKSUM = "file://COPYING;md5=1ebbd3e34237af26da5dc08a4e440464"
 
 # The fork's feat/nov2026: pellcorp/k1-kalico-firmware, branch nov2026, plus the same fixes as its main.
-SRC_URI = "git://github.com/zales/k1-kalico-firmware.git;protocol=https;branch=feat/nov2026"
+SRC_URI = "git://github.com/datel-os/k1-kalico-firmware.git;protocol=https;branch=feat/nov2026"
 SRCREV = "9b2826cf39a65e705fa4663d3dd87b78f1fdf3f9"
 PV = "nov2026+git${SRCPV}"
 S = "${WORKDIR}/git"

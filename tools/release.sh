@@ -26,7 +26,7 @@ RELEASE_DIR="${RELEASE_DIR:-$HERE/release}"
 VOLUME="${VOLUME:-k1yocto-work}"
 DEPLOY=/work/k1-yocto/build/tmp/deploy/images/creality-k1
 BOARD=CR4CU220812S11
-REPO_URL=https://github.com/zales/datel-os
+REPO_URL=https://github.com/datel-os/datel-os
 KERNEL_SLOT=$((8 * 1024 * 1024))      # mmcblk0p5 / p6
 ROOTFS_SLOT=$((300 * 1024 * 1024))    # mmcblk0p7 / p8
 
@@ -56,7 +56,7 @@ OTA_RELEASE_NAME="datel-os-$TAG.ota.img"
 # source of the commit it was built from (zklippy_git.bb's SRCREV)
 ZKLIPPY_SRC_NAME="datel-os-$TAG-zklippy-src.tar.gz"
 ZKLIPPY_RECIPE="$HERE/meta-creality-k1/recipes-printer/zklippy/zklippy_git.bb"
-ZKLIPPY_MIRROR=/work/k1-yocto/build/downloads/git2/github.com.zales.k1-zklippy.git
+ZKLIPPY_MIRROR=/work/k1-yocto/build/downloads/git2/github.com.datel-os.k1-zklippy.git
 KAS_IMAGE=ghcr.io/siemens/kas/kas:4.7
 zklippy_rev() { sed -n 's/^SRCREV = "\([0-9a-f]\{40\}\)"/\1/p' "$ZKLIPPY_RECIPE"; }
 

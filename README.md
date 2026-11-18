@@ -27,7 +27,7 @@ What ran on the reference printer for the versions before it, on 17 November 202
 
 | Area | State |
 |---|---|
-| Kernel | Linux 6.18.63, kernel.org's stable kernel with the K1's support from [zales/k1-linux](https://github.com/zales/k1-linux) (the X2000 on upstream's Ingenic platform, upstream's drivers with the X2000 added, a K1 device tree): eMMC, Wi-Fi with the stock MAC, all three MCU UARTs, UVC camera, Helix video codec. The CPU runs at 912 MHz instead of the boot loader's 1200 ([why](docs/DIAGNOSTICS.md#cpu-clock-and-floating-point)) |
+| Kernel | Linux 6.18.63, kernel.org's stable kernel with the K1's support from [datel-os/k1-linux](https://github.com/datel-os/k1-linux) (the X2000 on upstream's Ingenic platform, upstream's drivers with the X2000 added, a K1 device tree): eMMC, Wi-Fi with the stock MAC, all three MCU UARTs, UVC camera, Helix video codec. The CPU runs at 912 MHz instead of the boot loader's 1200 ([why](docs/DIAGNOSTICS.md#cpu-clock-and-floating-point)) |
 | System | Yocto scarthgap, systemd, read-only squashfs root, data in `/usr/data/k1os`, A/B slots with a trial boot that falls back to the other slot |
 | Printing | zklippy, Kalico's host as one Zig binary ([KALICO.md](docs/KALICO.md#the-host-zklippy)); open firmware on all three MCUs, load cell probe; an 89-minute print completed under zklippy on 17 November 2026 |
 | Web UI | Moonraker and Mainsail behind nginx, printer name and camera registered on first boot |
@@ -62,7 +62,7 @@ Ordered by how much it hurts.
 Short version; the full procedure with backup, recovery and first-start steps is in [docs/INSTALL.md](docs/INSTALL.md).
 
 1. Copy your SSH key to the stock printer: `ssh-copy-id -i ~/.ssh/k1_printer_ecdsa.pub root@<ip>`.
-2. Download a [release](https://github.com/zales/datel-os/releases) and verify `SHA256SUMS`, or build (below).
+2. Download a [release](https://github.com/datel-os/datel-os/releases) and verify `SHA256SUMS`, or build (below).
 3. Write the inactive slot and verify it. `IDLE=1` says that the printer is not printing: stock without Moonraker cannot tell the script, and it does not write on a guess:
 
 ```bash
@@ -118,9 +118,9 @@ Our code, recipes, scripts, documentation and artwork are under the MIT license 
 
 | Component | License | Source |
 |---|---|---|
-| Linux 6.18 with the K1's support | GPL-2.0 | [zales/k1-linux](https://github.com/zales/k1-linux); what mainline lacks for the X2000 is written there from [NebulaOS-KE/NebulaOS-kernel](https://github.com/NebulaOS-KE/NebulaOS-kernel) (Ingenic's SDK kernel 6.6), and a file written from one of the SDK's names it at its top |
-| Kalico (its example configs and docs) and the MCU firmware | GPL-3.0 | [pellcorp/kalico](https://github.com/pellcorp/kalico), [zales/k1-kalico-firmware](https://github.com/zales/k1-kalico-firmware) (a fork of pellcorp/k1-kalico-firmware) |
-| zklippy, Kalico's host ported to Zig | GPL-3.0 | `zales/k1-zklippy` (a private repository); the source of the version in the image is in every release's files as `datel-os-vX.Y.Z-zklippy-src.tar.gz` |
+| Linux 6.18 with the K1's support | GPL-2.0 | [datel-os/k1-linux](https://github.com/datel-os/k1-linux); what mainline lacks for the X2000 is written there from [NebulaOS-KE/NebulaOS-kernel](https://github.com/NebulaOS-KE/NebulaOS-kernel) (Ingenic's SDK kernel 6.6), and a file written from one of the SDK's names it at its top |
+| Kalico (its example configs and docs) and the MCU firmware | GPL-3.0 | [pellcorp/kalico](https://github.com/pellcorp/kalico), [datel-os/k1-kalico-firmware](https://github.com/datel-os/k1-kalico-firmware) (a fork of pellcorp/k1-kalico-firmware) |
+| zklippy, Kalico's host ported to Zig | GPL-3.0 | `datel-os/k1-zklippy` (a private repository); the source of the version in the image is in every release's files as `datel-os-vX.Y.Z-zklippy-src.tar.gz` |
 | Moonraker, Mainsail, moonraker-timelapse | GPL-3.0 | upstream |
 | Mbed TLS 3.6.2 (the DTLS handshake of WebRTC, inside `k1os-camera`) | Apache-2.0 | [Mbed-TLS/mbedtls](https://github.com/Mbed-TLS/mbedtls) |
 | Zig 0.17.1 (build tool only) | MIT | [ziglang.org](https://ziglang.org/) |

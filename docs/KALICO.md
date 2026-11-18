@@ -6,9 +6,9 @@ Datel OS prints with zklippy, Kalico's host ported to one Zig binary, and loads 
 
 | Part | Source | Notes |
 |---|---|---|
-| Host | `zales/k1-zklippy` (private for now), branch `main` | zklippy: Kalico's host ported to Zig module by module, with the same G-code, the same messages to the MCUs and the same Moonraker API, in one binary instead of Python. Built by the image with `-Dk1 -Doptimize=ReleaseFast` |
+| Host | `datel-os/k1-zklippy` (private for now), branch `main` | zklippy: Kalico's host ported to Zig module by module, with the same G-code, the same messages to the MCUs and the same Moonraker API, in one binary instead of Python. Built by the image with `-Dk1 -Doptimize=ReleaseFast` |
 | Kalico | [pellcorp/kalico](https://github.com/pellcorp/kalico), branch `nov2026` | Kalico with the K1 additions: strain gauge probe (`load_cell_probe`, `hx711s`), MCU bootloader entry. zklippy is its port; the image takes Kalico's example configs and docs from it (`kalico-common`), not its Python host |
-| MCU firmware | [zales/k1-kalico-firmware](https://github.com/zales/k1-kalico-firmware), branch `feat/nov2026`: pellcorp's `nov2026` plus twelve commits | Creality's GD32 port, built with the `gcc-arm-none-eabi` toolchain from meta-arm, with the header the Creality bootloader expects. The fork puts the scheduler back to upstream (a timer that is already late shuts the MCU down; Creality's port moved it 2 µs ahead and carried on), drops the port's debug counters and links with GCC 13 |
+| MCU firmware | [datel-os/k1-kalico-firmware](https://github.com/datel-os/k1-kalico-firmware), branch `feat/nov2026`: pellcorp's `nov2026` plus twelve commits | Creality's GD32 port, built with the `gcc-arm-none-eabi` toolchain from meta-arm, with the header the Creality bootloader expects. The fork puts the scheduler back to upstream (a timer that is already late shuts the MCU down; Creality's port moved it 2 µs ahead and carried on), drops the port's debug counters and links with GCC 13 |
 | Flashing | `k1os-mcu-update` (own) | Talks to the Creality serial bootloader on all three ports at once right after boot, writes a firmware only when the version differs, then starts the application |
 | Configuration | `k1os-kalico-config` (own) | Converts the stock `printer.cfg` once on the first start, backup next to it as `config.creality-<date>` |
 
