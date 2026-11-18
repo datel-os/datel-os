@@ -12,4 +12,4 @@ printf '\n'
 printf "   ${r}▄██${n}         ${w}%s${n}\n" "$host"
 printf "  ${r}██${w}▀${r}█${a}▶${n}        ${r}%s${n} ${m}%s%s${n}\n" "${NAME:-Datel OS}" "${VERSION_ID:-?}" "${VERSION_CODENAME:+ · $VERSION_CODENAME}"
 printf "   ${k}▀██${n}         ${m}%s${n}${m}%s${n}\n" "${model:-Creality K1}" "${slot:+ · $slot}"
-printf "    ${k}▀▀${n}         ${m}${HOME_URL:-github.com/zales/datel-os}${n}\n"
+printf "    ${k}▀▀${n}         ${m}${HOME_URL:-github.com/datel-os/datel-os}${n}\n"

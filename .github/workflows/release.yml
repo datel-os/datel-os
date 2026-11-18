@@ -1,7 +1,7 @@
 # Datel OS firmware release. A tag vX.Y.Z in the development repository
-# (zales/k1-yocto, private) builds the image on the self-hosted
+# (datel-os/k1-yocto, private) builds the image on the self-hosted
 # runner (label "k1-yocto") and publishes them to the public repository
-# zales/datel-os: the tagged commit and its history go to its main branch and
+# datel-os/datel-os: the tagged commit and its history go to its main branch and
 # the tag, the images become a GitHub Release there. The steps are
 # tools/release.sh; docs/RELEASE.md has the runner setup, the token and the
 # manual fallback.
@@ -32,12 +32,12 @@ concurrency:
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
-  PUBLIC_REPO: zales/datel-os
+  PUBLIC_REPO: datel-os/datel-os
 
 jobs:
   build:
     name: Build images on the self-hosted runner
-    if: github.repository == 'zales/k1-yocto'
+    if: github.repository == 'datel-os/k1-yocto'
     runs-on: [self-hosted, k1-yocto]
     timeout-minutes: 720
     steps:
@@ -66,7 +66,7 @@ jobs:
 
   publish:
     name: Mirror the code and publish the release in the public repository
-    if: github.repository == 'zales/k1-yocto'
+    if: github.repository == 'datel-os/k1-yocto'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30

@@ -11,7 +11,7 @@ Datel OS is written over SSH into the eMMC slot the printer is not running from.
 ssh-copy-id -i ~/.ssh/k1_printer_ecdsa.pub root@<ip>
 ```
 
-- The release files (`gh release download vX.Y.Z -R zales/datel-os -D dl/`, then `shasum -a 256 -c SHA256SUMS` in `dl/`) or your own build, see [DEVELOPMENT.md](DEVELOPMENT.md).
+- The release files (`gh release download vX.Y.Z -R datel-os/datel-os -D dl/`, then `shasum -a 256 -c SHA256SUMS` in `dl/`) or your own build, see [DEVELOPMENT.md](DEVELOPMENT.md).
 - The printer must not be printing. `tools/flash-slot2.sh` refuses to write while a print runs or is paused, and also when it cannot find out: it asks Moonraker, which Datel OS runs and stock does not unless you added it. From such a stock, put `IDLE=1` in front of the write command to say that nothing prints.
 
 ### Back up the eMMC

@@ -1,6 +1,6 @@
 SUMMARY = "Linux 6.18 for the Creality K1 (Ingenic X2000)"
 DESCRIPTION = "kernel.org's stable Linux 6.18 with what the K1's board needs, from \
-zales/k1-linux: the X2000 as a SoC of upstream's Ingenic platform, drivers for its \
+datel-os/k1-linux: the X2000 as a SoC of upstream's Ingenic platform, drivers for its \
 clocks, interrupt controller, timer and second CPU, upstream's drivers with the X2000 \
 added for its other devices, the board's device tree, and the driver for the Helix \
 codec (/dev/helix)."
@@ -9,12 +9,12 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
 
 inherit kernel
 
-# main of zales/k1-linux. Everything reaches that branch through pull requests,
+# main of datel-os/k1-linux. Everything reaches that branch through pull requests,
 # and each of them says what it was checked with on the printer; the commit
 # here is the one of pull request 30, which sets the CPU to 912 MHz. Below it
 # are the X2000 on upstream's Ingenic platform (pull requests 26 to 28) and
 # the README of pull request 29.
-SRC_URI = "git://github.com/zales/k1-linux.git;protocol=https;branch=main"
+SRC_URI = "git://github.com/datel-os/k1-linux.git;protocol=https;branch=main"
 SRCREV = "1683216cdd73ef93fa0bf3d8b6358163bd60ea7d"
 S = "${WORKDIR}/git"
 

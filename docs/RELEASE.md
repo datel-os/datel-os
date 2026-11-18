@@ -1,8 +1,8 @@
 # Datel OS releases
 
-Development happens in the private repository `zales/k1-yocto`; the public repository [`zales/datel-os`](https://github.com/zales/datel-os) receives the code and the images at every release. A release is a tag `vX.Y.Z` in the private repository. The workflow `.github/workflows/release.yml` builds the image from it, checks the files, pushes the tagged commit with its history and the tag to the public repository's `main`, and creates the GitHub Release there with notes generated from the commits since the previous tag. All steps are done by `tools/release.sh`, so the same can be run by hand.
+Development happens in the private repository `datel-os/k1-yocto`; the public repository [`datel-os/datel-os`](https://github.com/datel-os/datel-os) receives the code and the images at every release. A release is a tag `vX.Y.Z` in the private repository. The workflow `.github/workflows/release.yml` builds the image from it, checks the files, pushes the tagged commit with its history and the tag to the public repository's `main`, and creates the GitHub Release there with notes generated from the commits since the previous tag. All steps are done by `tools/release.sh`, so the same can be run by hand.
 
-**Token.** The workflow writes to the public repository with the secret `DATEL_OS_TOKEN` of the private repository: a fine-grained personal access token (GitHub, Settings, Developer settings, Fine-grained tokens) with *Repository access* limited to `datel-os` and the permissions *Contents: Read and write* and *Workflows: Read and write* (the mirrored history contains `.github/workflows/release.yml`, and GitHub refuses a push of workflow files without it). Set it with `gh secret set DATEL_OS_TOKEN -R zales/k1-yocto`. Without it the `publish` job stops before touching anything. The mirrored workflow file never runs in the public repository (every job checks the repository name).
+**Token.** The workflow writes to the public repository with the secret `DATEL_OS_TOKEN` of the private repository: a fine-grained personal access token (GitHub, Settings, Developer settings, Fine-grained tokens) with *Repository access* limited to `datel-os` and the permissions *Contents: Read and write* and *Workflows: Read and write* (the mirrored history contains `.github/workflows/release.yml`, and GitHub refuses a push of workflow files without it). Set it with `gh secret set DATEL_OS_TOKEN -R datel-os/k1-yocto`. Without it the `publish` job stops before touching anything. The mirrored workflow file never runs in the public repository (every job checks the repository name).
 
 ## What a release contains
 
@@ -15,11 +15,11 @@ Development happens in the private repository `zales/k1-yocto`; the public repos
 | `SHA256SUMS` | checksums of all files | |
 
 **zklippy.**
-* zklippy comes from the private repository `zales/k1-zklippy`. It is GPL-3.0, so every release carries its source.
+* zklippy comes from the private repository `datel-os/k1-zklippy`. It is GPL-3.0, so every release carries its source.
 * `collect` makes the archive with `git archive` from bitbake's own clone in the volume, so it holds the bytes the image was built from.
 * `check` requires the archive, with `COPYING`, `build.zig` and `src/main.zig` under the commit's prefix.
 * The runner reads the repository with a read-only deploy key in `~zales/.ssh/k1-zklippy-deploy` on zlsnas: GitHub deploy key 170211863, "zlsnas release runner (read-only)". `build.sh` hands that key into the build container (see DEVELOPMENT.md).
-* Should the key ever be lost, make a new one on the NAS with `ssh-keygen -t ed25519 -N "" -f ~/.ssh/k1-zklippy-deploy`, then add its public half with `gh repo deploy-key add ~/.ssh/k1-zklippy-deploy.pub -R zales/k1-zklippy`.
+* Should the key ever be lost, make a new one on the NAS with `ssh-keygen -t ed25519 -N "" -f ~/.ssh/k1-zklippy-deploy`, then add its public half with `gh repo deploy-key add ~/.ssh/k1-zklippy-deploy.pub -R datel-os/k1-zklippy`.
 
 **What a release never contains:** the bootloader (neither the SPL nor U-Boot, nor the open one from branch `feat/uboot`, which is not verified on the printer), the RTOS `zero.bin` for the third core, and anything for partition `mmcblk0p9`. `tools/release.sh check` refuses every file outside the list above and additionally opens each `.ota.img` to verify that it contains only the kernel and system chunks and that `ota_update.in` installs only `kernel` and `rootfs`. The stock bootloader therefore stays in place and the way back to stock in the other slot keeps working.
 
@@ -95,7 +95,7 @@ Datel OS is written into the slot the printer is not running from: from stock (s
 1. Download the release files and verify the checksums:
 
 ```bash
-gh release download v0.3.0 -R zales/datel-os -D dl/ && (cd dl && shasum -a 256 -c SHA256SUMS)
+gh release download v0.3.0 -R datel-os/datel-os -D dl/ && (cd dl && shasum -a 256 -c SHA256SUMS)
 ```
 
 2. Write, verify and switch the marker. From stock into slot 2 (`PRINTER=root@<ip>`; `IDLE=1` because stock without Moonraker cannot tell the script that nothing prints):
