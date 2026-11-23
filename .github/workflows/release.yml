@@ -1,10 +1,12 @@
 # Datel OS firmware release. A tag vX.Y.Z in the development repository
-# (zales/k1-yocto, private) builds the image on the self-hosted
+# (datel-os/k1-yocto, private) builds the image on the self-hosted
 # runner (label "k1-yocto") and publishes them to the public repository
-# zales/datel-os: the tagged commit and its history go to its main branch and
-# the tag, the images become a GitHub Release there. The steps are
-# tools/release.sh; docs/RELEASE.md has the runner setup, the token and the
-# manual fallback.
+# datel-os/datel-os: the tagged commit and its history go to its main branch and
+# the tag, the images become a GitHub Release there. Between the two the built
+# files are started once on the printer (tools/release-test.sh): a release whose
+# files do not boot, or fail a check there, is not published. The steps are
+# tools/release.sh; docs/RELEASE.md has the runner setup, the token, the test
+# on the printer and the manual fallback.
 #
 # The release carries the kernel, the root filesystem and the OTA package only.
 # tools/release.sh check refuses anything else, bootloader and RTOS included.
@@ -22,6 +24,11 @@ on:
         description: "Existing tag to build and publish again (vX.Y.Z)"
         required: true
         type: string
+      printer_test:
+        description: "Start the files on the printer before publishing"
+        type: choice
+        options: [run, skip]
+        default: run
 
 permissions:
   contents: read
@@ -32,12 +39,12 @@ concurrency:
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
-  PUBLIC_REPO: zales/datel-os
+  PUBLIC_REPO: datel-os/datel-os
 
 jobs:
   build:
     name: Build images on the self-hosted runner
-    if: github.repository == 'zales/k1-yocto'
+    if: github.repository == 'datel-os/k1-yocto'
     runs-on: [self-hosted, k1-yocto]
     timeout-minutes: 720
     steps:
@@ -64,10 +71,46 @@ jobs:
           compression-level: 0
           retention-days: 7
 
+  test:
+    name: Start the files once on the printer
+    # A tag always runs it; only a manual run can say "skip".
+    if: github.repository == 'datel-os/k1-yocto' && inputs.printer_test != 'skip'
+    needs: build
+    runs-on: [self-hosted, k1-yocto]
+    # tools/release-test.sh waits up to 6 hours for a printer that is off or printing
+    timeout-minutes: 400
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-${{ env.TAG }}
+          path: release
+
+      - name: Trial boot and checks on the printer
+        env:
+          KEY: /home/zales/.ssh/k1-printer-test
+          # the slot the printer is not running from is the test's to overwrite
+          OVERWRITE_OTHER_SLOT: "1"
+        run: tools/release-test.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-test-${{ env.TAG }}
+          path: release-test/
+          if-no-files-found: ignore
+          retention-days: 30
+
   publish:
     name: Mirror the code and publish the release in the public repository
-    if: github.repository == 'zales/k1-yocto'
-    needs: build
+    # after a passed test, or after a manual run that skipped it
+    if: >-
+      ${{ !cancelled() && github.repository == 'datel-os/k1-yocto' && needs.build.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    needs: [build, test]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

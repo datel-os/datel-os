@@ -1,8 +1,8 @@
 # Datel OS releases
 
-Development happens in the private repository `zales/k1-yocto`; the public repository [`zales/datel-os`](https://github.com/zales/datel-os) receives the code and the images at every release. A release is a tag `vX.Y.Z` in the private repository. The workflow `.github/workflows/release.yml` builds the image from it, checks the files, pushes the tagged commit with its history and the tag to the public repository's `main`, and creates the GitHub Release there with notes generated from the commits since the previous tag. All steps are done by `tools/release.sh`, so the same can be run by hand.
+Development happens in the private repository `datel-os/k1-yocto`; the public repository [`datel-os/datel-os`](https://github.com/datel-os/datel-os) receives the code and the images at every release. A release is a tag `vX.Y.Z` in the private repository. The workflow `.github/workflows/release.yml` builds the image from it, checks the files, pushes the tagged commit with its history and the tag to the public repository's `main`, and creates the GitHub Release there with notes generated from the commits since the previous tag. All steps are done by `tools/release.sh`, so the same can be run by hand.
 
-**Token.** The workflow writes to the public repository with the secret `DATEL_OS_TOKEN` of the private repository: a fine-grained personal access token (GitHub, Settings, Developer settings, Fine-grained tokens) with *Repository access* limited to `datel-os` and the permissions *Contents: Read and write* and *Workflows: Read and write* (the mirrored history contains `.github/workflows/release.yml`, and GitHub refuses a push of workflow files without it). Set it with `gh secret set DATEL_OS_TOKEN -R zales/k1-yocto`. Without it the `publish` job stops before touching anything. The mirrored workflow file never runs in the public repository (every job checks the repository name).
+**Token.** The workflow writes to the public repository with the secret `DATEL_OS_TOKEN` of the private repository: a fine-grained personal access token (GitHub, Settings, Developer settings, Fine-grained tokens) with *Repository access* limited to `datel-os` and the permissions *Contents: Read and write* and *Workflows: Read and write* (the mirrored history contains `.github/workflows/release.yml`, and GitHub refuses a push of workflow files without it). Set it with `gh secret set DATEL_OS_TOKEN -R datel-os/k1-yocto`. Without it the `publish` job stops before touching anything. The mirrored workflow file never runs in the public repository (every job checks the repository name).
 
 ## What a release contains
 
@@ -15,15 +15,45 @@ Development happens in the private repository `zales/k1-yocto`; the public repos
 | `SHA256SUMS` | checksums of all files | |
 
 **zklippy.**
-* zklippy comes from the private repository `zales/k1-zklippy`. It is GPL-3.0, so every release carries its source.
+* zklippy comes from the private repository `datel-os/k1-zklippy`. It is GPL-3.0, so every release carries its source.
 * `collect` makes the archive with `git archive` from bitbake's own clone in the volume, so it holds the bytes the image was built from.
 * `check` requires the archive, with `COPYING`, `build.zig` and `src/main.zig` under the commit's prefix.
 * The runner reads the repository with a read-only deploy key in `~zales/.ssh/k1-zklippy-deploy` on zlsnas: GitHub deploy key 170211863, "zlsnas release runner (read-only)". `build.sh` hands that key into the build container (see DEVELOPMENT.md).
-* Should the key ever be lost, make a new one on the NAS with `ssh-keygen -t ed25519 -N "" -f ~/.ssh/k1-zklippy-deploy`, then add its public half with `gh repo deploy-key add ~/.ssh/k1-zklippy-deploy.pub -R zales/k1-zklippy`.
+* Should the key ever be lost, make a new one on the NAS with `ssh-keygen -t ed25519 -N "" -f ~/.ssh/k1-zklippy-deploy`, then add its public half with `gh repo deploy-key add ~/.ssh/k1-zklippy-deploy.pub -R datel-os/k1-zklippy`.
 
 **What a release never contains:** the bootloader (neither the SPL nor U-Boot, nor the open one from branch `feat/uboot`, which is not verified on the printer), the RTOS `zero.bin` for the third core, and anything for partition `mmcblk0p9`. `tools/release.sh check` refuses every file outside the list above and additionally opens each `.ota.img` to verify that it contains only the kernel and system chunks and that `ota_update.in` installs only `kernel` and `rootfs`. The stock bootloader therefore stays in place and the way back to stock in the other slot keeps working.
 
 The tag version has to match `DISTRO_VERSION` in `meta-creality-k1/conf/distro/k1os.conf`: it produces the OTA package version `9.X.Y.Z` (the nine so that it is higher than stock 1.3.x) and the name `CR4CU220812S11_ota_img_V9.X.Y.Z.img`. When they do not match, the workflow stops in its first step, before the build.
+
+## The test on the printer
+
+A release is published only after its files have started once on a real printer. The job `test` of the workflow runs `tools/release-test.sh` on the runner, which sits in the printer's network, between `build` and `publish`:
+
+1. It finds the printer (`PRINTER=root@<ip>`, or a search of `NET`'s /24 for Moonraker's port 7125) and waits, up to 6 hours, until it is there, not printing, with no heater target and a cool nozzle. A print is never disturbed.
+2. It writes the kernel and the system into the slot the printer is **not** running from, with `tools/flash-slot2.sh`, read back and compared.
+3. It points the marker at that slot and restarts. The release starts as a trial: `boot-keep` still names the old slot.
+4. It runs `tools/release-test-checks.py` on the release: the version in `os-release`, the trial state, systemd without a failed unit, an untainted kernel, Klipper ready with all three MCUs and no invalid bytes, G-code that only reports, a clean `klippy.log`, the host's locked memory, two different camera pictures, Mainsail.
+5. It restarts again, which returns the printer to the system it ran before, and checks that this one is kept and Klipper is ready on it.
+
+The report is the job's log and the artifact `release-test-vX.Y.Z`. Exit status: 0 passed, 1 a check failed, 2 the test could not start, 3 the write failed, 4 the printer did not come back to its own system.
+
+**What it needs.**
+* The printer runs a Datel OS that was kept (`k1os-slot keep`). Only a kept system comes back by itself, so the test refuses anything else.
+* The other slot is the test's: every release overwrites it (`OVERWRITE_OTHER_SLOT=1`, which the workflow sets). After a passed test it holds the release, and taking the release into use is `k1os-slot release`, a restart and `k1os-slot keep` there.
+* The runner's own SSH key for the printer, `~zales/.ssh/k1-printer-test` on zlsnas, with its public half in `/usr/data/k1os/ssh/authorized_keys` on the printer.
+
+**What it does not cover.**
+* A kernel that stops before its first service never points the marker back, and the stock bootloader counts no boots. The printer then stays down until the marker is swapped over USB ([tools/usbboot/README.md](../tools/usbboot/README.md)); the test ends with status 4 and says so.
+* The restart is a warm one, so the MCUs keep the firmware of the system that ran before.
+* Nothing moves and nothing heats: a print is not part of the test.
+
+A manual run of the workflow can skip the test (*Run workflow*, `printer_test: skip`), for the day the printer is away. By hand, with the files in `release/`:
+
+```bash
+TAG=v0.3.0 OVERWRITE_OTHER_SLOT=1 tools/release-test.sh
+```
+
+`tools/release-test.sh find` only looks for the printer and prints what it runs.
 
 ## Where it is built and why
 
@@ -95,7 +125,7 @@ Datel OS is written into the slot the printer is not running from: from stock (s
 1. Download the release files and verify the checksums:
 
 ```bash
-gh release download v0.3.0 -R zales/datel-os -D dl/ && (cd dl && shasum -a 256 -c SHA256SUMS)
+gh release download v0.3.0 -R datel-os/datel-os -D dl/ && (cd dl && shasum -a 256 -c SHA256SUMS)
 ```
 
 2. Write, verify and switch the marker. From stock into slot 2 (`PRINTER=root@<ip>`; `IDLE=1` because stock without Moonraker cannot tell the script that nothing prints):
@@ -118,4 +148,4 @@ Datel OS loads its own firmware into all three MCUs on the first cold start (abo
 
 **Datel OS in both slots.** Once you overwrite the second slot too, stock disappears from the printer and A/B serves Datel OS alone. Back up the stock partitions p1–p5 and p7 first (`ssh root@<ip> dd if=/dev/mmcblk0pN bs=1M > mmcblk0pN.bin`, about 330 MB, compare the MD5 with `md5sum /dev/mmcblk0pN` on the printer); the way back to stock is writing those files back from a running Datel OS. Without stock on the printer the display does not work (Datel OS has no panel driver yet).
 
-**The `.ota.img` package** is the format installed by the stock Creality updater and by the future own updater (phase 5). The updater expects a file named like the directory inside it, so rename it to `CR4CU220812S11_ota_img_V9.X.Y.Z.img` before use (the exact name is in the release notes). Installing through the stock updater has not been tried on the printer yet; the verified path is `tools/flash-slot2.sh`.
+**The `.ota.img` package** is the format installed by the stock Creality updater and by the future own updater (phase 5). The updater expects a file named like the directory inside it, so rename it to `CR4CU220812S11_ota_img_V9.X.Y.Z.img` before use (the exact name is in the release notes). The stock updater's script installed such a package on the reference printer on 23 November 2026 ([INSTALL.md](INSTALL.md#the-otaimg-package)); the touchscreen's way of starting it has not been tried, and `tools/flash-slot2.sh` remains the path the releases are tested by.

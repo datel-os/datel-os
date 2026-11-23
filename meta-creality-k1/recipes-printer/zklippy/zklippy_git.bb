@@ -4,16 +4,16 @@ module, with the same G-code, the same messages to the MCUs and the same Moonrak
 API. One binary in place of Python and klippy: less CPU and memory per printed move \
 on the K1. It is the image's Klipper host; Klipper's example configs and docs, the \
 conversion of the stock configuration and the MCU firmware come from kalico-common."
-HOMEPAGE = "https://github.com/zales/k1-zklippy"
+HOMEPAGE = "https://github.com/datel-os/k1-zklippy"
 LICENSE = "GPL-3.0-only"
 LIC_FILES_CHKSUM = "file://COPYING;md5=1ebbd3e34237af26da5dc08a4e440464"
 
 # A private repository: the build fetches it over SSH with the agent of whoever
 # runs build.sh (it forwards the agent into the build container), with
 # GitHub's host keys pinned in files/github_known_hosts.
-SRC_URI = "git://git@github.com/zales/k1-zklippy.git;protocol=ssh;branch=main \
+SRC_URI = "git://git@github.com/datel-os/k1-zklippy.git;protocol=ssh;branch=main \
            file://klipper.service"
-SRCREV = "5ae62db62290d101637a38ef7cd9245d655cdd5a"
+SRCREV = "cc119e49d4e7d9f5562cd161875762b356959287"
 PV = "0.1+git${SRCPV}"
 S = "${WORKDIR}/git"
 

@@ -51,13 +51,15 @@ esac
 OTHER=$(( 3 - SLOT ))
 
 die() { echo "STOP: $*" >&2; exit 1; }
-md5of() { md5 -q "$1"; }
+# md5 and file size on macOS and on Linux (the release runner)
+md5of() { if command -v md5sum >/dev/null; then md5sum < "$1" | cut -d' ' -f1; else md5 -q "$1"; fi; }
+sizeof() { wc -c < "$1" | tr -d ' '; }
 
 # Pad to whole 4 KiB blocks so the read-back can use dd with block counts.
 pad4k() {
     local f="$1" out="$2" size pad
     cp "$f" "$out"
-    size=$(stat -f %z "$out")
+    size=$(sizeof "$out")
     pad=$(( (4096 - size % 4096) % 4096 ))
     [ "$pad" -gt 0 ] && dd if=/dev/zero bs=1 count="$pad" 2>/dev/null >> "$out"
     return 0
@@ -68,7 +70,7 @@ pad4k() {
 [ -f "$PUBKEY" ] || die "missing $PUBKEY (Datel OS allows SSH login with a key only)"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 pad4k "$KERNEL" "$TMP/kernel"; pad4k "$ROOTFS" "$TMP/rootfs"
-KS=$(stat -f %z "$TMP/kernel"); RS=$(stat -f %z "$TMP/rootfs")
+KS=$(sizeof "$TMP/kernel"); RS=$(sizeof "$TMP/rootfs")
 KM=$(md5of "$TMP/kernel"); RM=$(md5of "$TMP/rootfs")
 # Each image in two parts: the first 4 KiB block, written last, and the rest.
 split4k() {

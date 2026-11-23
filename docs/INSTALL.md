@@ -11,7 +11,7 @@ Datel OS is written over SSH into the eMMC slot the printer is not running from.
 ssh-copy-id -i ~/.ssh/k1_printer_ecdsa.pub root@<ip>
 ```
 
-- The release files (`gh release download vX.Y.Z -R zales/datel-os -D dl/`, then `shasum -a 256 -c SHA256SUMS` in `dl/`) or your own build, see [DEVELOPMENT.md](DEVELOPMENT.md).
+- The release files (`gh release download vX.Y.Z -R datel-os/datel-os -D dl/`, then `shasum -a 256 -c SHA256SUMS` in `dl/`) or your own build, see [DEVELOPMENT.md](DEVELOPMENT.md).
 - The printer must not be printing. `tools/flash-slot2.sh` refuses to write while a print runs or is paused, and also when it cannot find out: it asks Moonraker, which Datel OS runs and stock does not unless you added it. From such a stock, put `IDLE=1` in front of the write command to say that nothing prints.
 
 ### Back up the eMMC
@@ -56,6 +56,8 @@ Datel OS boots as a trial. Its first step, before any file system is mounted, po
 ssh root@<ip> k1os-slot keep
 ```
 
+Without SSH the same is `SLOT_KEEP` in Mainsail's console, and `SLOT_STATUS` there says which system runs and where a power cycle goes. A printer whose configuration was made by a version before these macros needs the line `[include /usr/share/k1os/slot.cfg]` in `k1os_kalico.cfg` once; `curl -X POST http://<ip>/server/k1os/slot/keep` works without it.
+
 `k1os-slot status` shows the running slot, the next boot and whether keep is set; `k1os-slot release` undoes it. The keep is the slot's own: `/usr/data/k1os/boot-keep` holds the name of the slot that was kept, so a later update into the other slot starts as a trial again and needs its own `k1os-slot keep`. (Up to 0.8.1 the file only had to exist and the next system inherited it; such a file keeps the old system and no newer one.)
 
 While `tools/flash-slot2.sh --write` writes a slot, the first block of its kernel and of its system is zero, and the trial boot does not point the marker at such a slot: if the write breaks off, the running system stays the next boot, and `k1os-slot status` says that the other slot holds no system. Run `--write` again. A Datel OS up to 0.8.1 in the running slot does not make this check.
@@ -91,4 +93,14 @@ If the printer no longer boots from either slot, the Ingenic mask-ROM USB boot l
 
 ## The `.ota.img` package
 
-Each release also contains the kernel and system packed in the format of the stock Creality updater (`CR4CU220812S11_ota_img_V9.X.Y.Z.img`). It is built and checked but has not been tried through the stock updater yet. The verified path is `tools/flash-slot2.sh`.
+Each release also contains the kernel and system packed in the format of the stock Creality updater (`CR4CU220812S11_ota_img_V9.X.Y.Z.img`; the release file `datel-os-vX.Y.Z.ota.img` renamed to that).
+
+The stock updater takes it. On 23 November 2026, on the reference printer with stock 1.3.3.46 in slot 1, the updater's own script was run by hand over SSH:
+
+```bash
+/etc/ota_bin/local_ota_update.sh /usr/data/tmp/CR4CU220812S11_ota_img_V9.X.Y.Z.img
+```
+
+It unpacked the package, wrote the kernel and the system into slot 2 in 44 s (both read back equal to the build) and pointed the marker at slot 2. After a restart Datel OS came up as a trial, and `SLOT_KEEP` (there as `curl -X POST http://<ip>/server/k1os/slot/keep`) kept it without SSH. Klipper needed the one `FIRMWARE_RESTART` that a warm restart from stock always needs.
+
+Not tried: the touchscreen's own update from a USB stick, which is what would start that script on a printer nobody has SSH on. The script does not compare versions in any way that matters (`[ 1.3.3.46 -ge 9.X.Y.Z ]` is an error in its shell and counts as "older"), so the package's version is no obstacle either way.

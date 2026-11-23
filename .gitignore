@@ -1,6 +1,10 @@
 # Build outputs (60 MB images)
 out/
 release/
+# Report of tools/release-test.sh
+release-test/
+# Release files downloaded for flashing (gh release download ... -D dl/)
+dl/
 # kas/bitbake scratch if ever run locally
 build/
 *.log
