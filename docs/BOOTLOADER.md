@@ -10,7 +10,15 @@ What those two starts showed:
 What they did not show:
 * a start after a real power-on. Both were restarts, with the DDR chip already powered;
 * the stock system (slot 1) started by this bootloader;
-* the boot counter. The image on the printer has no `fw_setenv` and a `k1os-slot` that knows nothing of the counter, so nothing arms it. Do not set `k1_trial=1` by hand there: nothing would clear it, and the fourth start would go to the other slot.
+* a kernel that hangs without a panic. Nothing restarts it, so the count goes on only with the power switch.
+
+**The boot counter**, the same day, with this branch's image (merged with `main`) in slot 1:
+* `fw_printenv` in Linux reads the environment U-Boot saved, and `k1os-slot status` says `u-boot:  open, trial=0 bootcount=0/3`.
+* Armed (`k1os-slot arm`) and started once with the two slot services masked from the kernel command line (`k1_extra_args`): `k1_bootcount` read 1 afterwards. U-Boot counts.
+* The next start, with the services back: the journal says `k1os-slot: boot counter cleared`, the environment reads `k1_trial=0`, `k1_bootcount=0`. A system that comes up ends the count.
+* The fall back: the first block of slot 1's root filesystem zeroed, the counter armed, one restart asked. The kernel could not mount its root, panicked and restarted itself after its 10 s, three times; at the fourth start U-Boot wrote `ota:kernel2` into the marker and started slot 2. The printer answered from slot 2 79 s after the restart was asked, with `k1_fallback_from=1` and `k1_trial=0` in the environment. The block was then put back and slot 1 kept again.
+
+An older Datel OS (before this branch) can still not arm the counter: it has no `fw_setenv`, and `tools/flash-slot2.sh --switch` run against it arms nothing.
 
 The stock bootloader's bytes (sectors 34 to 433, read from the printer right before the write and equal to the backup of 5 November) are kept as `stock-bootloader-sectors-34-433.bin`; "Writing it to the eMMC" below has the way back.
 
@@ -160,7 +168,6 @@ The way back: `dd if=mmcblk0-sectors-0-1488895.bin bs=512 skip=34 count=400 | ss
 ## What is left
 
 - A start from a power-on, and stock in slot 1 started by it.
-- An image with this branch's `k1os-slot` and `fw_setenv` on the printer, and then the counter: arm, three starts that do not confirm, the fall back.
 - The test from RAM over USB was skipped; it is still the way to try a new build without writing it.
 - U-Boot reads the eMMC with the SDK's SDHCI driver without HS200; a kernel of 5 MiB takes about 1 s. Later `MMC_MODE_8BIT` and a faster clock.
 - Starting the watchdog in U-Boot before `bootm`, so that a kernel that hangs is restarted and counted without the power switch. The kernel's watchdog driver has to take over a running watchdog for that; not looked at.
