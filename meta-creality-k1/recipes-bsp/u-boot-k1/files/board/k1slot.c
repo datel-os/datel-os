@@ -18,6 +18,19 @@
  * (k1os-slot does this on K1 OS). Stock firmware never touches the counter,
  * which is fine because nothing sets k1_trial=1 for it.
  *
+ * A kernel that hangs without a panic would never be started again, so a
+ * counted start can also get the watchdog: "k1slot load" starts it with k1_wdt
+ * seconds right before the kernel is entered. k1_wdt is 0, off, unless
+ * whoever arms the counter sets it (k1os-slot arm <seconds>): a kernel has to
+ * know how to take a running watchdog over, and Datel OS's kernels before
+ * k1-linux's "leave a watchdog the boot loader started as it is" are reset
+ * by it within a second. A kernel
+ * that gets nowhere is reset and counted; one that comes up takes the
+ * watchdog over (Linux stops its clock as an unused one about 2 s in, and
+ * systemd starts it again as its own). Only a counted start gets it: the
+ * start after a fall back and every start without a trial run as before, so
+ * stock, which knows nothing of a running watchdog, is never reset by it.
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of
@@ -29,6 +42,7 @@
 #include <mmc.h>
 #include <image.h>
 #include <asm/io.h>
+#include <asm/arch/wdt.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -42,6 +56,34 @@ DECLARE_GLOBAL_DATA_PTR;
 #endif
 
 extern int saveenv(void);
+
+/* Set by "k1slot select" when this start is one the counter counts. */
+static int k1_counted;
+
+/*
+ * Start the SoC's watchdog as Linux's driver does. Its clock is the "RTC"
+ * clock, which on this board is the 24 MHz crystal divided by 512 (there is no
+ * 32768 Hz crystal), divided by 1024 again: 45 counts a second, 1431 s at most.
+ * The X2000's compare register holds two values: the count that resets the
+ * chip in its low half and an earlier one that only raises an interrupt in its
+ * high half. Both get the same count, as in Linux when no pre-timeout is set;
+ * a zero in the high half is a match from the first count on, and Linux
+ * panics on that interrupt once systemd has armed the pre-timeout.
+ */
+static void k1_wdt_start(unsigned long seconds)
+{
+	unsigned long counts = seconds * (CONFIG_SYS_EXTAL / 512 / 1024);
+
+	if (counts > 65535)
+		counts = 65535;
+	writel(TSCR_WDTSC, TCU_BASE + TCU_TSCR);	/* clock on */
+	writel(0, WDT_BASE + WDT_TCER);
+	writel(counts | (counts << 16), WDT_BASE + WDT_TDR);
+	/* The counter cannot be written; TCSR_CLRZ clears it. */
+	writel(TCSR_PRESCALE_1024 | TCSR_RTC_EN | TCSR_CLRZ, WDT_BASE + WDT_TCSR);
+	writel(TCER_TCEN, WDT_BASE + WDT_TCER);
+	printf("k1slot: watchdog started, %lu s for the kernel to come up\n", seconds);
+}
 
 static struct mmc *k1_mmc(void)
 {
@@ -175,6 +217,7 @@ static int k1_select(struct mmc *mmc)
 		} else {
 			printf("k1slot: trial boot %lu of %lu for slot %d\n",
 			       count, limit, slot);
+			k1_counted = 1;
 		}
 		setenv_ulong("k1_bootcount", count);
 		save = 1;
@@ -238,14 +281,24 @@ static int k1_load(struct mmc *mmc, ulong addr)
 			slot = 1;
 		k1_export(slot);
 	}
-	if (k1_load_one(mmc, slot, addr) == 0)
-		return 0;
-	printf("k1slot: trying slot %d instead\n", k1_other(slot));
-	if (k1_load_one(mmc, k1_other(slot), addr) == 0) {
+	if (k1_load_one(mmc, slot, addr) != 0) {
+		/* The other slot is not the one on trial: no watchdog for it. */
+		printf("k1slot: trying slot %d instead\n", k1_other(slot));
+		if (k1_load_one(mmc, k1_other(slot), addr) != 0)
+			return 1;
 		k1_export(k1_other(slot));
-		return 0;
+		k1_counted = 0;
 	}
-	return 1;
+	/* Milliseconds since U-Boot started its timer, for the kernel command
+	 * line (k1_ubms=): what the bootloader's second stage costs a start. */
+	setenv_ulong("k1_ms", get_timer(0));
+	if (k1_counted) {
+		unsigned long wdt = getenv_ulong("k1_wdt", 10, 0);
+
+		if (wdt)
+			k1_wdt_start(wdt);
+	}
+	return 0;
 }
 
 static int k1_status(struct mmc *mmc)
@@ -306,6 +359,14 @@ static int do_k1slot(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		return saveenv() ? 1 : 0;
 	}
 
+	if (!strcmp(argv[1], "wdt")) {
+		/* By hand, to see the watchdog work: "k1slot wdt 20; sleep 60". */
+		if (argc < 3)
+			return CMD_RET_USAGE;
+		k1_wdt_start(simple_strtoul(argv[2], NULL, 10));
+		return 0;
+	}
+
 	if (!strcmp(argv[1], "confirm")) {
 		setenv("k1_trial", "0");
 		setenv("k1_bootcount", "0");
@@ -320,7 +381,9 @@ U_BOOT_CMD(
 	"Creality K1 A/B slot selection",
 	"status          - show the ota marker and the boot counter\n"
 	"k1slot select          - pick the slot (marker + counter); sets k1_slot, k1_root, k1_mem, k1_lcm\n"
-	"k1slot load [addr]     - read the slot's xImage to addr (default ${loadaddr})\n"
+	"k1slot load [addr]     - read the slot's xImage to addr (default ${loadaddr});\n"
+	"                         a counted start gets the watchdog (k1_wdt seconds)\n"
 	"k1slot marker [1|2]    - show or set the ota marker (setting starts a trial)\n"
-	"k1slot confirm         - end the trial: k1_trial=0, k1_bootcount=0, saveenv"
+	"k1slot confirm         - end the trial: k1_trial=0, k1_bootcount=0, saveenv\n"
+	"k1slot wdt <seconds>   - start the watchdog now (a test: nothing stops it again)"
 );

@@ -33,9 +33,17 @@
 # a kernel that never reaches the first service. The stock bootloader leaves
 # that area zero, fw_printenv then reports a bad CRC, and everything here
 # works by the marker alone, as before.
-#   arm      count the boots of the slot the marker names (k1_trial=1). For a
+#   arm [s]  count the boots of the slot the marker names (k1_trial=1). For a
 #            slot that holds Datel OS only: stock never confirms, so a counter
-#            armed for it would send the printer back after k1_bootlimit boots
+#            armed for it would send the printer back after k1_bootlimit boots.
+#            With a number of seconds the bootloader also starts the watchdog
+#            for every counted boot (k1_wdt), so that a kernel which hangs
+#            without a panic is reset and counted too. Only for a slot whose
+#            kernel takes a running watchdog over: Datel OS's kernels before
+#            k1-linux's "leave a watchdog the boot loader started as it is"
+#            are reset by it within a second, three times, and the printer
+#            falls back. Without a number, and for an older bootloader that
+#            knows no k1_wdt, the counter works as before.
 #   confirm  also ends the count (k1_trial=0, k1_bootcount=0); a system that
 #            got this far has started, whether it is kept or not
 #   status   also shows the counter
@@ -124,8 +132,17 @@ uboot_arm() {
         echo "k1os-slot: no open bootloader environment, nothing to arm" >&2
         return 1
     fi
-    "$FW_SETENV" k1_bootcount 0 && "$FW_SETENV" k1_trial 1 &&
+    case "${1:-0}" in
+        ''|*[!0-9]*) echo "k1os-slot: '$1' is no number of seconds, nothing armed" >&2; return 1 ;;
+    esac
+    # The watchdog's time first: a power cut before the trial is set leaves
+    # no trial, and one after it a trial with the time that was asked for.
+    "$FW_SETENV" k1_wdt "${1:-0}" && "$FW_SETENV" k1_bootcount 0 && "$FW_SETENV" k1_trial 1 || return 1
+    if [ "${1:-0}" -gt 0 ]; then
+        echo "k1os-slot: counting the next $(uboot_var k1_bootlimit 3) boots of $(current), each with $1 s on the watchdog"
+    else
         echo "k1os-slot: counting the next $(uboot_var k1_bootlimit 3) boots of $(current)"
+    fi
 }
 
 uboot_status() {
@@ -190,7 +207,7 @@ case "$1" in
         fi
         rm -f "$KEEP"; write "$o" ;;
     arm)
-        uboot_arm ;;
+        uboot_arm "${2:-0}" ;;
     status)
         r=$(running)
         k=$(kept)
@@ -208,5 +225,5 @@ case "$1" in
         holds_system "$(other)" || [ "$(other)" = unknown ] || echo "other:   no system (being written, or a write broke off)"
         uboot_status ;;
     *)
-        echo "usage: k1os-slot trial|confirm|keep|release|arm|status" >&2; exit 1 ;;
+        echo "usage: k1os-slot trial|confirm|keep|release|arm [seconds]|status" >&2; exit 1 ;;
 esac

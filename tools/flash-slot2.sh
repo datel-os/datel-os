@@ -17,6 +17,12 @@
 # connected, or it is stock firmware without Moonraker. IDLE=1 says that no
 # print is running and lets the write go on then.
 #
+# WATCHDOG=<seconds> with --switch: with the open bootloader, a kernel of the
+# new slot that hangs without a panic is reset after that long and counted.
+# Only for an image whose kernel takes a running watchdog over (Datel OS's
+# kernels from k1-linux's "leave a watchdog the boot loader started as it is"
+# on); an older one is reset by it within a second.
+#
 # Datel OS boots as a trial: its first step points the marker back at the
 # slot it was written from, so a power cycle returns to the previous system
 # until you run "k1os-slot keep" on the new one. That holds for every new
@@ -170,7 +176,9 @@ check)
       # With the open bootloader: count the boots of the new slot, so that a
       # kernel that never starts is left after k1_bootlimit of them. Says
       # nothing with the stock bootloader, on stock, or on an older Datel OS.
-      command -v k1os-slot >/dev/null 2>&1 && k1os-slot arm 2>/dev/null || true"
+      # WATCHDOG=<seconds> also has the bootloader start the watchdog for
+      # those boots; only for an image whose kernel takes it over.
+      command -v k1os-slot >/dev/null 2>&1 && k1os-slot arm ${WATCHDOG:-0} 2>/dev/null || true"
     echo "== marker points at slot $SLOT. Reboot the printer to try it." ;;
 *)
     die "unknown option $MODE" ;;

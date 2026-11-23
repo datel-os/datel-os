@@ -122,6 +122,10 @@ run arm;     is "unsaved environment: nothing to arm" "$?" 1
 uboot k1_trial=0 k1_bootcount=2; fresh; boot 7; set_marker ota:kernel2
 run arm;     is "arm starts the count from zero" "$? $(fwvar k1_trial) $(fwvar k1_bootcount)" "0 1 0"
 is "arm leaves the marker" "$(marker)" ota:kernel2
+is "arm without a time leaves the watchdog off" "$(fwvar k1_wdt)" 0
+run arm 30;  is "arm 30 asks for the watchdog" "$? $(fwvar k1_trial) $(fwvar k1_wdt)" "0 1 30"
+run arm;     is "the next arm without a time turns it off again" "$? $(fwvar k1_wdt)" "0 0"
+run arm soon; is "arm with no number arms nothing new" "$? $(fwvar k1_wdt)" "1 0"
 run status;  is "status shows the count" "$(grep '^u-boot:' "$T/out")" "u-boot:  open, trial=1 bootcount=0/3"
 # the new system's first boot, counted once by the bootloader
 uboot k1_trial=1 k1_bootcount=1; boot 8
