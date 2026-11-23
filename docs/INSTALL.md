@@ -62,7 +62,7 @@ Without SSH the same is `SLOT_KEEP` in Mainsail's console, and `SLOT_STATUS` the
 
 While `tools/flash-slot2.sh --write` writes a slot, the first block of its kernel and of its system is zero, and the trial boot does not point the marker at such a slot: if the write breaks off, the running system stays the next boot, and `k1os-slot status` says that the other slot holds no system. Run `--write` again. A Datel OS up to 0.8.1 in the running slot does not make this check.
 
-What the trial boot does not cover: a kernel that hangs before the first service, for example because of the device tree. Then every boot goes to the new slot and only the USB mask-ROM boot swaps the marker back, see [Recovery](#recovery).
+What the trial boot does not cover: a kernel that hangs before the first service, for example because of the device tree. Then every boot goes to the new slot and only the USB mask-ROM boot swaps the marker back, see [Recovery](#recovery). A bootloader that counts the starts of a new slot and goes back by itself is built but has not run on a printer: [BOOTLOADER.md](BOOTLOADER.md).
 
 ## First start
 

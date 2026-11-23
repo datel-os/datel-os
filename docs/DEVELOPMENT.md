@@ -37,6 +37,7 @@ zklippy is GPL-3.0 and its repository stays private, so every release carries zk
 | `recipes-httpd/nginx/` | Mainsail and camera proxy configuration |
 | `recipes-devtools/zig/` | The Zig compiler (official binary) that builds `zklippy`, `k1os-camera` and `k1os-helix` |
 | `recipes-bsp/k1-wifi-nvram/` | Wi-Fi module calibration file |
+| `recipes-bsp/u-boot-k1/` | An open bootloader (SPL and U-Boot 2013.07 from Ingenic's SDK, with a boot counter); built only on request, written nowhere, see [BOOTLOADER.md](BOOTLOADER.md) |
 | `recipes-devtools/gcc/` | gcc built for FP64 and NaN 2008 |
 | `recipes-python/`, `recipes-connectivity/` | Python dependencies of Moonraker, sshd on a read-only root |
 

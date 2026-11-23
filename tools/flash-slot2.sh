@@ -166,7 +166,11 @@ check)
       b=/tmp/k1os-marker
       { printf '$MARK_TO\n\n'; dd if=/dev/zero bs=$(( 512 - ${#MARK_TO} - 2 )) count=1 2>/dev/null; } > \$b
       dd if=\$b of=/dev/mmcblk0p1 bs=512 count=1 2>/dev/null; sync; rm -f \$b
-      dd if=/dev/mmcblk0p1 bs=512 count=1 2>/dev/null | tr -d '\000' | head -n 1"
+      dd if=/dev/mmcblk0p1 bs=512 count=1 2>/dev/null | tr -d '\000' | head -n 1
+      # With the open bootloader: count the boots of the new slot, so that a
+      # kernel that never starts is left after k1_bootlimit of them. Says
+      # nothing with the stock bootloader, on stock, or on an older Datel OS.
+      command -v k1os-slot >/dev/null 2>&1 && k1os-slot arm 2>/dev/null || true"
     echo "== marker points at slot $SLOT. Reboot the printer to try it." ;;
 *)
     die "unknown option $MODE" ;;

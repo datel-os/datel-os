@@ -39,7 +39,7 @@ What ran on the reference printer for the versions before it, on 17 November 202
 | Updates | Write the inactive slot over SSH, trial boot, GitHub Releases from tags |
 | Staying alive | Hardware watchdog, compressed swap, an OOM kill instead of a freeze with the print killed last, the journal kept across a reboot and sent to a syslog server, a health line every minute, a flight recorder that keeps the last 15 minutes before Klipper stops |
 | Display and touch | **Missing.** The screen shows the RTOS boot logo only |
-| Own bootloader | In progress on branch `feat/uboot`, not verified on the printer |
+| Own bootloader | `./build.sh u-boot-k1` builds an SPL and U-Boot with a boot counter from the SDK tree the stock one was built from; it has never run on a printer and nothing installs it, see [docs/BOOTLOADER.md](docs/BOOTLOADER.md) |
 
 ## Limitations
 
@@ -94,6 +94,7 @@ Images land in the volume under `build/tmp/deploy/images/creality-k1/`; `TAG=vX.
 | Document | Contents |
 |---|---|
 | [docs/INSTALL.md](docs/INSTALL.md) | Backup, flashing, trial boot, both slots, going back to stock, recovery |
+| [docs/BOOTLOADER.md](docs/BOOTLOADER.md) | How the stock bootloader starts the printer, and an open one with a boot counter that is built but has not run yet |
 | [docs/KALICO.md](docs/KALICO.md) | The Klipper host (zklippy) and the MCU firmware: configuration conversion, probe and input shaper calibration, fans |
 | [docs/CAMERA.md](docs/CAMERA.md) | Camera settings, OrcaSlicer, timelapse |
 | [docs/TWITCH.md](docs/TWITCH.md) | Twitch live stream: setup, Mainsail dialog, overlay, automatic title |

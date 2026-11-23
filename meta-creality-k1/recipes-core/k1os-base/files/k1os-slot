@@ -25,6 +25,21 @@
 # them in last, after the read-back. A slot whose kernel or rootfs starts
 # with a zero block is never made the next boot.
 #
+# With the open bootloader (recipes-bsp/u-boot-k1) there is a second net that
+# does not depend on this system starting: a boot counter in U-Boot's
+# environment (/etc/fw_env.config, 32 KiB at eMMC byte 0x6A400). While
+# k1_trial=1 the bootloader counts every boot and, past k1_bootlimit, points
+# the marker at the other slot itself. That covers what the trial above cannot:
+# a kernel that never reaches the first service. The stock bootloader leaves
+# that area zero, fw_printenv then reports a bad CRC, and everything here
+# works by the marker alone, as before.
+#   arm      count the boots of the slot the marker names (k1_trial=1). For a
+#            slot that holds Datel OS only: stock never confirms, so a counter
+#            armed for it would send the printer back after k1_bootlimit boots
+#   confirm  also ends the count (k1_trial=0, k1_bootcount=0); a system that
+#            got this far has started, whether it is kept or not
+#   status   also shows the counter
+#
 # The paths can be set from outside for k1os-slot-test.sh.
 
 M=${K1OS_SLOT_MARKER:-/dev/mmcblk0p1}
@@ -32,6 +47,8 @@ KEEP=${K1OS_SLOT_KEEP:-/usr/data/k1os/boot-keep}
 CMDLINE=${K1OS_SLOT_CMDLINE:-/proc/cmdline}
 PART=${K1OS_SLOT_PART:-/dev/mmcblk0p}
 RUN=${K1OS_SLOT_RUN:-/run}
+FW_PRINTENV=${K1OS_SLOT_FW_PRINTENV:-fw_printenv}
+FW_SETENV=${K1OS_SLOT_FW_SETENV:-fw_setenv}
 
 running() {
     case " $(cat "$CMDLINE") " in
@@ -83,6 +100,42 @@ holds_system() {
     return 0
 }
 
+# Is the open bootloader there, with an environment it has saved?
+uboot_env() {
+    command -v "$FW_PRINTENV" >/dev/null 2>&1 && "$FW_PRINTENV" k1_env_saved >/dev/null 2>&1
+}
+
+uboot_var() {
+    "$FW_PRINTENV" -n "$1" 2>/dev/null || echo "$2"
+}
+
+# End the count. Writes only when something is set, to spare the eMMC.
+uboot_confirm() {
+    uboot_env || return 0
+    if [ "$(uboot_var k1_trial 0)" != 0 ] || [ "$(uboot_var k1_bootcount 0)" != 0 ]; then
+        "$FW_SETENV" k1_trial 0 && "$FW_SETENV" k1_bootcount 0 && echo "k1os-slot: boot counter cleared"
+    fi
+}
+
+# The count to zero first: a power cut between the two writes leaves no trial
+# rather than a trial that starts from an old count.
+uboot_arm() {
+    if ! uboot_env; then
+        echo "k1os-slot: no open bootloader environment, nothing to arm" >&2
+        return 1
+    fi
+    "$FW_SETENV" k1_bootcount 0 && "$FW_SETENV" k1_trial 1 &&
+        echo "k1os-slot: counting the next $(uboot_var k1_bootlimit 3) boots of $(current)"
+}
+
+uboot_status() {
+    if uboot_env; then
+        echo "u-boot:  open, trial=$(uboot_var k1_trial 0) bootcount=$(uboot_var k1_bootcount 0)/$(uboot_var k1_bootlimit 3)"
+    else
+        echo "u-boot:  stock (no environment)"
+    fi
+}
+
 write() {
     case "$1" in
         ota:kernel|ota:kernel2) ;;
@@ -119,14 +172,15 @@ case "$1" in
             write "$r"
         else
             echo "k1os-slot: trial boot, next boot is $(current)"
-        fi ;;
+        fi
+        uboot_confirm ;;
     keep)
         r=$(running)
         [ "$r" = unknown ] && { echo "k1os-slot: unknown root in $CMDLINE, nothing kept" >&2; exit 1; }
         # the name first, whole, then the marker
         printf '%s\n' "$r" > "$KEEP.new" && mv "$KEEP.new" "$KEEP" || exit 1
         sync
-        write "$r" ;;
+        write "$r" && uboot_confirm ;;
     release)
         o=$(other)
         [ "$o" = unknown ] && { echo "k1os-slot: unknown root in $CMDLINE, nothing released" >&2; exit 1; }
@@ -135,6 +189,8 @@ case "$1" in
             exit 1
         fi
         rm -f "$KEEP"; write "$o" ;;
+    arm)
+        uboot_arm ;;
     status)
         r=$(running)
         k=$(kept)
@@ -149,7 +205,8 @@ case "$1" in
         else
             echo "keep:    no (trial)"
         fi
-        holds_system "$(other)" || [ "$(other)" = unknown ] || echo "other:   no system (being written, or a write broke off)" ;;
+        holds_system "$(other)" || [ "$(other)" = unknown ] || echo "other:   no system (being written, or a write broke off)"
+        uboot_status ;;
     *)
-        echo "usage: k1os-slot trial|confirm|keep|release|status" >&2; exit 1 ;;
+        echo "usage: k1os-slot trial|confirm|keep|release|arm|status" >&2; exit 1 ;;
 esac
