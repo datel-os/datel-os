@@ -7,8 +7,9 @@ What those two starts showed:
 * the first start saved the environment (`k1_env_saved=1`, `k1_trial=0`), the second read it back;
 * Klipper ready, and the checks of `tools/release-test-checks.py` passed on the system so started.
 
-What they did not show:
-* a start after a real power-on. Both were restarts, with the DDR chip already powered;
+**A start after a power-on**, the same evening: the printer was switched off and on, the kernel logged `reset status RSR=0x00000001 power-on`, and the bootloader started Datel OS from slot 1 as it had after the restarts. The three MCU bootloaders answered, as they do only after a power-on, and Klipper came up ready. So the DDR init works from cold on this board.
+
+What is not shown:
 * the stock system (slot 1) started by this bootloader;
 * a kernel that hangs without a panic. Nothing restarts it, so the count goes on only with the power switch.
 
@@ -167,7 +168,7 @@ The way back: `dd if=mmcblk0-sectors-0-1488895.bin bs=512 skip=34 count=400 | ss
 
 ## What is left
 
-- A start from a power-on, and stock in slot 1 started by it.
+- Stock in slot 1 started by it.
 - The test from RAM over USB was skipped; it is still the way to try a new build without writing it.
 - U-Boot reads the eMMC with the SDK's SDHCI driver without HS200; a kernel of 5 MiB takes about 1 s. Later `MMC_MODE_8BIT` and a faster clock.
 - Starting the watchdog in U-Boot before `bootm`, so that a kernel that hangs is restarted and counted without the power switch. The kernel's watchdog driver has to take over a running watchdog for that; not looked at.
