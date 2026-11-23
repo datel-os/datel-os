@@ -1,6 +1,18 @@
 # An open bootloader for the K1
 
-State on 17 November 2026: the recipe `u-boot-k1` builds on today's `main`, and its output is checked against the stock bootloader byte for byte where that is possible. **It has never run on a printer.** Nothing here writes to the eMMC: the first test is a start from RAM over USB (below), and writing it to the eMMC is a separate step that waits for a decision.
+State on 23 November 2026: **it runs on the reference printer, from the eMMC.** The build of 17 November (`U-Boot 2013.07-k1-gd86790d2e`) was written to sectors 34 to 342 from the running Datel OS, without the test from RAM, because nobody was at the printer and its owner took the risk. Two restarts went through it: the SPL, U-Boot and `k1slot` started Datel OS from slot 2 in about 31 s each, as the stock SPL does.
+
+What those two starts showed:
+* the DDR init, the SPL reading U-Boot from the eMMC, U-Boot reading the marker and the kernel, `bootm` of Datel OS's 6.18 kernel with the command line `k1_boot` builds (both CPUs, the same memory, `lcm_id=3`);
+* the first start saved the environment (`k1_env_saved=1`, `k1_trial=0`), the second read it back;
+* Klipper ready, and the checks of `tools/release-test-checks.py` passed on the system so started.
+
+What they did not show:
+* a start after a real power-on. Both were restarts, with the DDR chip already powered;
+* the stock system (slot 1) started by this bootloader;
+* the boot counter. The image on the printer has no `fw_setenv` and a `k1os-slot` that knows nothing of the counter, so nothing arms it. Do not set `k1_trial=1` by hand there: nothing would clear it, and the fourth start would go to the other slot.
+
+The stock bootloader's bytes (sectors 34 to 433, read from the printer right before the write and equal to the backup of 5 November) are kept as `stock-bootloader-sectors-34-433.bin`; "Writing it to the eMMC" below has the way back.
 
 What it is for: the stock SPL has no boot counter, so a kernel that hangs before the first service is started again on every power-up, and only the USB mask-ROM boot gets the printer back ([Limitations](../README.md#limitations), number 2). This bootloader counts the boots of a new slot and returns to the other one by itself.
 
@@ -141,14 +153,15 @@ Only after the test from RAM went through, with `bootm` of Datel OS. It is writt
 1. The backup of the area 0–0xA3FFF is in `~/Documents/K1-zaloha-2026-11-05` (`mmcblk0-sectors-0-1488895.bin`; sectors 0–2047 are the whole first MiB).
 2. Write the SPL and U-Boot: `u-boot-k1-with-spl.bin` from sector 34 (`dd of=/dev/mmcblk0 bs=512 seek=34 conv=fsync`). The file is 158 072 bytes, 309 sectors, and ends at sector 342, far before the environment (850) and `ota` (2048).
 3. **Do not write sector 0:** our parameters equal stock's (checked), and the MBR and GPT stay. If the SPL's size ever changes, write only the first 256 bytes of `u-boot-k1-sector0.bin`.
-4. Read it back, compare the MD5, then restart with the console open.
+4. Read it back, compare the MD5, then restart with the console open. BusyBox's `dd` on the printer has no `conv=fsync`: write with a plain `dd` and run `sync`.
 
 The way back: `dd if=mmcblk0-sectors-0-1488895.bin bs=512 skip=34 count=400 | ssh root@<printer> 'dd of=/dev/mmcblk0 bs=512 seek=34 conv=fsync'` puts the stock SPL and U-Boot back. The write touched sectors 34 to 342; stock's U-Boot is the longer one and ends in sector 414, so 400 sectors from 34 cover both and stay far below the environment at 850. When the printer does not start at all, USB is left: `usbboot --uboot` (Ingenic's burner) and writing the backup with `--download` and `burn`, or the cloner. Writing through the burner is not tried on this S12 board, which is why the test from RAM comes before the write.
 
 ## What is left
 
-- The test from RAM on the printer. It waits for somebody at the printer: USB-UART on J1, micro USB, BOOT + RESET.
-- After it, the decision about writing to the eMMC.
+- A start from a power-on, and stock in slot 1 started by it.
+- An image with this branch's `k1os-slot` and `fw_setenv` on the printer, and then the counter: arm, three starts that do not confirm, the fall back.
+- The test from RAM over USB was skipped; it is still the way to try a new build without writing it.
 - U-Boot reads the eMMC with the SDK's SDHCI driver without HS200; a kernel of 5 MiB takes about 1 s. Later `MMC_MODE_8BIT` and a faster clock.
 - Starting the watchdog in U-Boot before `bootm`, so that a kernel that hangs is restarted and counted without the power switch. The kernel's watchdog driver has to take over a running watchdog for that; not looked at.
 - `lcm_id` for other panels: `fw_setenv k1_lcm_default N`.
