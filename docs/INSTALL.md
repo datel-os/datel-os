@@ -93,4 +93,14 @@ If the printer no longer boots from either slot, the Ingenic mask-ROM USB boot l
 
 ## The `.ota.img` package
 
-Each release also contains the kernel and system packed in the format of the stock Creality updater (`CR4CU220812S11_ota_img_V9.X.Y.Z.img`). It is built and checked but has not been tried through the stock updater yet. The verified path is `tools/flash-slot2.sh`.
+Each release also contains the kernel and system packed in the format of the stock Creality updater (`CR4CU220812S11_ota_img_V9.X.Y.Z.img`; the release file `datel-os-vX.Y.Z.ota.img` renamed to that).
+
+The stock updater takes it. On 23 November 2026, on the reference printer with stock 1.3.3.46 in slot 1, the updater's own script was run by hand over SSH:
+
+```bash
+/etc/ota_bin/local_ota_update.sh /usr/data/tmp/CR4CU220812S11_ota_img_V9.X.Y.Z.img
+```
+
+It unpacked the package, wrote the kernel and the system into slot 2 in 44 s (both read back equal to the build) and pointed the marker at slot 2. After a restart Datel OS came up as a trial, and `SLOT_KEEP` (there as `curl -X POST http://<ip>/server/k1os/slot/keep`) kept it without SSH. Klipper needed the one `FIRMWARE_RESTART` that a warm restart from stock always needs.
+
+Not tried: the touchscreen's own update from a USB stick, which is what would start that script on a printer nobody has SSH on. The script does not compare versions in any way that matters (`[ 1.3.3.46 -ge 9.X.Y.Z ]` is an error in its shell and counts as "older"), so the package's version is no obstacle either way.
