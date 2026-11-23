@@ -39,7 +39,7 @@ What ran on the reference printer for the versions before it, on 17 November 202
 | Updates | Write the inactive slot over SSH, trial boot, GitHub Releases from tags |
 | Staying alive | Hardware watchdog, compressed swap, an OOM kill instead of a freeze with the print killed last, the journal kept across a reboot and sent to a syslog server, a health line every minute, a flight recorder that keeps the last 15 minutes before Klipper stops |
 | Display and touch | **Missing.** The screen shows the RTOS boot logo only |
-| Own bootloader | `./build.sh u-boot-k1` builds an SPL and U-Boot with a boot counter from the SDK tree the stock one was built from. It runs on the reference printer since 23 November 2026, written to the eMMC by hand: restarts start Datel OS through it, and a slot whose kernel panicked three times was left for the other one by itself. Not shown: a start after a power-on, and stock started by it. Nothing installs it and no release carries it, see [docs/BOOTLOADER.md](docs/BOOTLOADER.md) |
+| Own bootloader | `./build.sh u-boot-k1` builds an SPL and U-Boot with a boot counter from the SDK tree the stock one was built from. It runs on the reference printer since 23 November 2026, written to the eMMC by hand: restarts and a power-on start Datel OS through it, and a slot whose kernel panicked three times was left for the other one by itself. Not shown: stock started by it. Nothing installs it and no release carries it, see [docs/BOOTLOADER.md](docs/BOOTLOADER.md) |
 
 ## Limitations
 
