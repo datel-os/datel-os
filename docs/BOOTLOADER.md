@@ -11,7 +11,6 @@ What those two starts showed:
 
 What is not shown:
 * the stock system (slot 1) started by this bootloader;
-* a kernel that hangs without a panic. Nothing restarts it, so the count goes on only with the power switch.
 
 **The boot counter**, the same day, with this branch's image (merged with `main`) in slot 1:
 * `fw_printenv` in Linux reads the environment U-Boot saved, and `k1os-slot status` says `u-boot:  open, trial=0 bootcount=0/3`.
@@ -20,6 +19,16 @@ What is not shown:
 * The fall back: the first block of slot 1's root filesystem zeroed, the counter armed, one restart asked. The kernel could not mount its root, panicked and restarted itself after its 10 s, three times; at the fourth start U-Boot wrote `ota:kernel2` into the marker and started slot 2. The printer answered from slot 2 79 s after the restart was asked, with `k1_fallback_from=1` and `k1_trial=0` in the environment. The block was then put back and slot 1 kept again.
 
 An older Datel OS (before this branch) can still not arm the counter: it has no `fw_setenv`, and `tools/flash-slot2.sh --switch` run against it arms nothing.
+
+**The watchdog**, the same evening. A kernel that hangs without a panic used to be counted only when somebody switched the printer off and on. U-Boot can now start the SoC's watchdog for a counted start, and such a kernel is reset and counted by itself:
+* `k1slot wdt 20; sleep 120` in U-Boot alone: the printer was reset about 21 s later. The watchdog's clock is the 24 MHz crystal divided by 512 and by 1024, 45 counts a second.
+* The kernel as it was killed such a watchdog at once: registering the timer unit's clocks reset the watchdog's divider, and it counted 1024 times faster. With 30 s the kernel was reset before its console was up; with the longest time, 65535 counts, its last line came at 1.364 s. [k1-linux pull request 33](https://github.com/datel-os/k1-linux/pull/33) leaves a running watchdog alone and holds its clock.
+* With that kernel in slot 2 and 30 s: the kernel logs `jz4740-wdt 10002000.watchdog: left running by the boot loader`, systemd takes the watchdog over at 3.5 s, the counter is cleared, and the system stays up.
+* A "kernel" that only loops, in slot 2, counter armed with 30 s: three resets by the watchdog, and at the fourth start U-Boot pointed the marker at slot 1. Its kernel started 104 s after the restart was asked, with `k1_fallback_from=2`.
+
+The watchdog is off unless it is asked for (`k1os-slot arm 30`, or `WATCHDOG=30 tools/flash-slot2.sh --switch`): a kernel without pull request 33 is reset by it within a second, three times, and the printer falls back. Ask for it only for an image whose kernel has it.
+
+**The start is a second shorter.** U-Boot no longer waits a second for a key on a console nobody has connected: its second stage took 1.67 s and takes 0.66 s (`k1_ubms=` on the kernel command line says so at every start). A key held on J1 when U-Boot starts still stops it, and `fw_setenv bootdelay 3` brings the wait back. Reading the kernel from the eMMC was already done with four data lines at 24 MHz; there was nothing to gain there.
 
 The stock bootloader's bytes (sectors 34 to 433, read from the printer right before the write and equal to the backup of 5 November) are kept as `stock-bootloader-sectors-34-433.bin`; "Writing it to the eMMC" below has the way back.
 
@@ -70,7 +79,7 @@ The kernel command line is the one the stock SPL passes (`console=ttyS2,115200n8
 What it adds to stock:
 
 - **A boot counter.** The variables `k1_trial`, `k1_bootcount` and `k1_bootlimit` (3). While `k1_trial=1`, every start raises `k1_bootcount` and saves the environment; past the limit U-Boot points the marker in p1 at the other slot, clears `k1_trial` and starts from there. See the next section for who arms and who clears it.
-- **A console.** One second of `Hit any key to stop autoboot`, the hush shell, `mmc`, `md`, `loadb`, `k1slot status|marker|confirm`, `saveenv`. Recovery without USB: a cable on J1 and `k1slot marker 1`.
+- **A console.** The hush shell behind a key held on J1 at the start (no wait by default; `bootdelay` in the environment sets one), `mmc`, `md`, `loadb`, `k1slot status|marker|confirm`, `saveenv`. Recovery without USB: a cable on J1 and `k1slot marker 1`.
 - **A net under an empty environment.** The first start saves the built-in defaults (`k1_env_saved=1`), and even if a tool in Linux wrote an environment without `bootcmd`, U-Boot uses the compiled-in one (patch `0002`).
 - **A time limit for the RTOS.** Stock waits for the RTOS's signal for ever; our SPL goes on without it after 10 s.
 - **A slot that is being written is never started.** `tools/flash-slot2.sh` zeroes the first 4 KiB of a slot's kernel while it writes; `k1slot load` finds no image header there and loads the other slot.
@@ -81,8 +90,8 @@ Datel OS already boots as a trial without this bootloader ([INSTALL.md](INSTALL.
 
 | Who | What it does with the counter |
 |---|---|
-| `tools/flash-slot2.sh --switch` | after pointing the marker at the new slot it runs `k1os-slot arm` on the printer: `k1_bootcount=0`, `k1_trial=1` |
-| `k1os-slot arm` | the same by hand, for the slot the marker names |
+| `tools/flash-slot2.sh --switch` | after pointing the marker at the new slot it runs `k1os-slot arm` on the printer: `k1_bootcount=0`, `k1_trial=1`. With `WATCHDOG=<seconds>` also `k1_wdt`, the watchdog's time for every counted start |
+| `k1os-slot arm [seconds]` | the same by hand, for the slot the marker names; without the seconds the watchdog is off (`k1_wdt=0`) |
 | U-Boot, every start with `k1_trial=1` | counts; at the fourth start of a slot that never confirmed it writes the other slot into the marker |
 | `k1os-slot confirm` (every Datel OS boot, once `/usr/data` is up) and `k1os-slot keep` | `k1_trial=0`, `k1_bootcount=0`. It writes only when one of them is set |
 | `k1slot marker 1\|2` on the console | sets the marker and arms the counter |
@@ -91,7 +100,7 @@ With the stock bootloader the environment area is zero, `fw_printenv` reports a 
 
 **Never arm the counter for the stock slot.** Stock firmware confirms nothing, so after three starts the bootloader would send the printer back. `k1os-slot release` therefore does not arm it. Without `k1_trial=1` nothing is counted and stock starts as it always did.
 
-What nobody presses a button for: a kernel that hangs before the first service does not restart by itself, because nothing has started the watchdog yet. The counter needs the three starts to come from somewhere, today from the power switch.
+What nobody presses a button for: a kernel that hangs before the first service does not restart by itself unless the watchdog was asked for when the counter was armed (above). Without it the counter needs the three starts to come from somewhere, the power switch.
 
 ## What the recipe builds
 
@@ -170,6 +179,5 @@ The way back: `dd if=mmcblk0-sectors-0-1488895.bin bs=512 skip=34 count=400 | ss
 
 - Stock in slot 1 started by it.
 - The test from RAM over USB was skipped; it is still the way to try a new build without writing it.
-- U-Boot reads the eMMC with the SDK's SDHCI driver without HS200; a kernel of 5 MiB takes about 1 s. Later `MMC_MODE_8BIT` and a faster clock.
-- Starting the watchdog in U-Boot before `bootm`, so that a kernel that hangs is restarted and counted without the power switch. The kernel's watchdog driver has to take over a running watchdog for that; not looked at.
+- The watchdog covers the kernel up to the moment systemd opens it, 3.5 s into the boot. A system that hangs after that is systemd's watchdog's to reset, and that reset is counted like any other.
 - `lcm_id` for other panels: `fw_setenv k1_lcm_default N`.
