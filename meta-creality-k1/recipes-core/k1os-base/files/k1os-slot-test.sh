@@ -11,7 +11,9 @@ export K1OS_SLOT_MARKER=$T/p1 K1OS_SLOT_KEEP=$T/boot-keep K1OS_SLOT_CMDLINE=$T/c
 fails=0
 
 marker() { dd if="$T/p1" bs=512 count=1 2>/dev/null | tr -d '\000' | head -n 1; }
-set_marker() { { printf '%s\n\n' "$1"; dd if=/dev/zero bs=500 count=1 2>/dev/null; } | dd of="$T/p1" bs=512 count=1 2>/dev/null; }
+# The block is written to the file itself: through a pipe, dd's one read of 512
+# bytes may return only the text and leave a marker of 13 bytes.
+set_marker() { { printf '%s\n\n' "$1"; dd if=/dev/zero bs=$((510 - ${#1})) count=1 2>/dev/null; } > "$T/p1"; }
 boot() { echo "console=ttyS2 root=/dev/mmcblk0p$1 rootwait ro" > "$T/cmdline"; }
 system() { for p in "$@"; do { printf 'hsqs'; dd if=/dev/zero bs=8188 count=1 2>/dev/null; } > "$T/p$p"; done; }
 empty() { for p in "$@"; do dd if=/dev/zero of="$T/p$p" bs=8192 count=1 2>/dev/null; done; }
