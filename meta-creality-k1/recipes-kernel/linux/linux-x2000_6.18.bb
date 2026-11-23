@@ -11,11 +11,13 @@ inherit kernel
 
 # main of datel-os/k1-linux. Everything reaches that branch through pull requests,
 # and each of them says what it was checked with on the printer; the commit
-# here is the one of pull request 30, which sets the CPU to 912 MHz. Below it
-# are the X2000 on upstream's Ingenic platform (pull requests 26 to 28) and
-# the README of pull request 29.
+# here is the one of pull request 33, with which a watchdog that the boot
+# loader started survives the kernel's start (docs/BOOTLOADER.md). Below it are
+# pull request 31 (an oops is a panic, no uevent helper), pull request 30,
+# which sets the CPU to 912 MHz, the X2000 on upstream's Ingenic platform
+# (pull requests 26 to 28) and the README of pull request 29.
 SRC_URI = "git://github.com/datel-os/k1-linux.git;protocol=https;branch=main"
-SRCREV = "1683216cdd73ef93fa0bf3d8b6358163bd60ea7d"
+SRCREV = "839963f38632dac67e6c4af061ae324f4bfe1744"
 S = "${WORKDIR}/git"
 
 LINUX_VERSION = "6.18.63"
