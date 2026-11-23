@@ -18,7 +18,7 @@ Version 0.9.1 is 0.9.0 from its new home: the project's repositories moved from 
 
 What ran before this release, on the reference printer on 18 November 2026: 0.9.0's sources as a local build (the image of 0.8.2 with 0.9.0's zklippy, version string apart). It was written into the second slot with 0.8.2's `flash-slot2.sh`, came up as a trial 17 s after the restart with zklippy ready 14 s later, no failed unit, no Moonraker warning and no error in the log, and was kept; a macro variable changed with `SET_GCODE_VARIABLE` reached Moonraker in 0.24 s. A print of 1 h 52 min (16.7 m of filament) then **completed on it**: read every 30 s, the steps were 3.9 to 4.7 s ahead, with no stall, no retransmitted or invalid byte on any of the three MCUs and no error line; zklippy used 8 % of one core on average (10 % at most) and both cores together were 21 % busy on average. When 0.9.0 was released that print was a tenth of the way through.
 
-**The released images of 0.9.0 and 0.9.1 themselves were not started on the printer.** Not tried on this code: a restart or `FIRMWARE_RESTART` in the middle of a print, bed mesh calibration, input shaper measurement, a timelapse. Read [Limitations](#limitations) before installing.
+**The released image of 0.9.0 itself was not started on the printer; 0.9.1's was, once, on 23 November 2026: a trial boot that passed the checks of `tools/release-test-checks.py`, without a print.** Not tried on this code: a restart or `FIRMWARE_RESTART` in the middle of a print, bed mesh calibration, input shaper measurement, a timelapse. Read [Limitations](#limitations) before installing.
 
 What ran on the reference printer for the versions before it, on 17 November 2026:
 * An 89-minute print under zklippy, started by hand on 0.7.0 with the zklippy binary of 0.8.0. It completed with the steps never less than 3.0 s ahead and no page of the program read back from the disk.
@@ -39,14 +39,14 @@ What ran on the reference printer for the versions before it, on 17 November 202
 | Updates | Write the inactive slot over SSH, trial boot, GitHub Releases from tags |
 | Staying alive | Hardware watchdog, compressed swap, an OOM kill instead of a freeze with the print killed last, the journal kept across a reboot and sent to a syslog server, a health line every minute, a flight recorder that keeps the last 15 minutes before Klipper stops |
 | Display and touch | **Missing.** The screen shows the RTOS boot logo only |
-| Own bootloader | `./build.sh u-boot-k1` builds an SPL and U-Boot with a boot counter from the SDK tree the stock one was built from; it has never run on a printer and nothing installs it, see [docs/BOOTLOADER.md](docs/BOOTLOADER.md) |
+| Own bootloader | `./build.sh u-boot-k1` builds an SPL and U-Boot with a boot counter from the SDK tree the stock one was built from. It runs on the reference printer since 23 November 2026, written to the eMMC by hand: restarts start Datel OS through it, and a slot whose kernel panicked three times was left for the other one by itself. Not shown: a start after a power-on, and stock started by it. Nothing installs it and no release carries it, see [docs/BOOTLOADER.md](docs/BOOTLOADER.md) |
 
 ## Limitations
 
 Ordered by how much it hurts.
 
 1. **No display.** Datel OS has no panel driver. Control the printer through Mainsail, OrcaSlicer or SSH.
-2. **No automatic fallback from a kernel that does not boot.** The stock SPL has no boot counter. The trial boot protects from the first systemd service on; a kernel that hangs before that needs the USB mask-ROM boot ([tools/usbboot/README.md](tools/usbboot/README.md)). That way back was needed once on the S12 board, on 14 November 2026 with the first Linux 6.18 kernel, and it worked.
+2. **No automatic fallback from a kernel that does not boot, with the stock bootloader.** The stock SPL has no boot counter. The trial boot protects from the first systemd service on; a kernel that hangs before that needs the USB mask-ROM boot ([tools/usbboot/README.md](tools/usbboot/README.md)). That way back was needed once on the S12 board, on 14 November 2026 with the first Linux 6.18 kernel, and it worked. The open bootloader has the counter ([docs/BOOTLOADER.md](docs/BOOTLOADER.md)), but it is installed by hand and tried on one printer only; even with it, a kernel that hangs without a panic is counted only when the printer is switched off and on.
 3. **Installation needs root over SSH on stock.** Creality publishes the stock root password in its rooting guide. Datel OS keeps the same root password, so it opens both slots.
 4. **MCU firmware changes only on a cold start.** When moving between stock and Datel OS, power the printer off and on.
 5. **Verified on one printer:** board CR4CU220812S11, panel `lcm_id=3`.
@@ -94,7 +94,7 @@ Images land in the volume under `build/tmp/deploy/images/creality-k1/`; `TAG=vX.
 | Document | Contents |
 |---|---|
 | [docs/INSTALL.md](docs/INSTALL.md) | Backup, flashing, trial boot, both slots, going back to stock, recovery |
-| [docs/BOOTLOADER.md](docs/BOOTLOADER.md) | How the stock bootloader starts the printer, and an open one with a boot counter that is built but has not run yet |
+| [docs/BOOTLOADER.md](docs/BOOTLOADER.md) | How the stock bootloader starts the printer, and an open one with a boot counter: what ran on the reference printer, how it was written and the way back |
 | [docs/KALICO.md](docs/KALICO.md) | The Klipper host (zklippy) and the MCU firmware: configuration conversion, probe and input shaper calibration, fans |
 | [docs/CAMERA.md](docs/CAMERA.md) | Camera settings, OrcaSlicer, timelapse |
 | [docs/TWITCH.md](docs/TWITCH.md) | Twitch live stream: setup, Mainsail dialog, overlay, automatic title |
