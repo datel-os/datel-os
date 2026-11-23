@@ -25,6 +25,36 @@ Development happens in the private repository `datel-os/k1-yocto`; the public re
 
 The tag version has to match `DISTRO_VERSION` in `meta-creality-k1/conf/distro/k1os.conf`: it produces the OTA package version `9.X.Y.Z` (the nine so that it is higher than stock 1.3.x) and the name `CR4CU220812S11_ota_img_V9.X.Y.Z.img`. When they do not match, the workflow stops in its first step, before the build.
 
+## The test on the printer
+
+A release is published only after its files have started once on a real printer. The job `test` of the workflow runs `tools/release-test.sh` on the runner, which sits in the printer's network, between `build` and `publish`:
+
+1. It finds the printer (`PRINTER=root@<ip>`, or a search of `NET`'s /24 for Moonraker's port 7125) and waits, up to 6 hours, until it is there, not printing, with no heater target and a cool nozzle. A print is never disturbed.
+2. It writes the kernel and the system into the slot the printer is **not** running from, with `tools/flash-slot2.sh`, read back and compared.
+3. It points the marker at that slot and restarts. The release starts as a trial: `boot-keep` still names the old slot.
+4. It runs `tools/release-test-checks.py` on the release: the version in `os-release`, the trial state, systemd without a failed unit, an untainted kernel, Klipper ready with all three MCUs and no invalid bytes, G-code that only reports, a clean `klippy.log`, the host's locked memory, two different camera pictures, Mainsail.
+5. It restarts again, which returns the printer to the system it ran before, and checks that this one is kept and Klipper is ready on it.
+
+The report is the job's log and the artifact `release-test-vX.Y.Z`. Exit status: 0 passed, 1 a check failed, 2 the test could not start, 3 the write failed, 4 the printer did not come back to its own system.
+
+**What it needs.**
+* The printer runs a Datel OS that was kept (`k1os-slot keep`). Only a kept system comes back by itself, so the test refuses anything else.
+* The other slot is the test's: every release overwrites it (`OVERWRITE_OTHER_SLOT=1`, which the workflow sets). After a passed test it holds the release, and taking the release into use is `k1os-slot release`, a restart and `k1os-slot keep` there.
+* The runner's own SSH key for the printer, `~zales/.ssh/k1-printer-test` on zlsnas, with its public half in `/usr/data/k1os/ssh/authorized_keys` on the printer.
+
+**What it does not cover.**
+* A kernel that stops before its first service never points the marker back, and the stock bootloader counts no boots. The printer then stays down until the marker is swapped over USB ([tools/usbboot/README.md](../tools/usbboot/README.md)); the test ends with status 4 and says so.
+* The restart is a warm one, so the MCUs keep the firmware of the system that ran before.
+* Nothing moves and nothing heats: a print is not part of the test.
+
+A manual run of the workflow can skip the test (*Run workflow*, `printer_test: skip`), for the day the printer is away. By hand, with the files in `release/`:
+
+```bash
+TAG=v0.3.0 OVERWRITE_OTHER_SLOT=1 tools/release-test.sh
+```
+
+`tools/release-test.sh find` only looks for the printer and prints what it runs.
+
 ## Where it is built and why
 
 The build runs on a **self-hosted runner on the NAS `zlsnas`** (Raspberry Pi 5, Debian 13, Docker, NVMe), the same way as on the Mac: `./build.sh` in Docker with the volume `k1yocto-work`, which holds the `sstate-cache` and `downloads`. The volume was created as a copy of the Mac's; both machines build in a linux/arm64 container (`BUILD_SYS = aarch64-linux`), so the sstate is portable between them and a release from a tag takes minutes. The exact tagged tree is built, not a working copy. Publishing is done by an ordinary GitHub runner (`ubuntu-latest`), which only checks and uploads.
