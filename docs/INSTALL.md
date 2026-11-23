@@ -56,6 +56,8 @@ Datel OS boots as a trial. Its first step, before any file system is mounted, po
 ssh root@<ip> k1os-slot keep
 ```
 
+Without SSH the same is `SLOT_KEEP` in Mainsail's console, and `SLOT_STATUS` there says which system runs and where a power cycle goes. A printer whose configuration was made by a version before these macros needs the line `[include /usr/share/k1os/slot.cfg]` in `k1os_kalico.cfg` once; `curl -X POST http://<ip>/server/k1os/slot/keep` works without it.
+
 `k1os-slot status` shows the running slot, the next boot and whether keep is set; `k1os-slot release` undoes it. The keep is the slot's own: `/usr/data/k1os/boot-keep` holds the name of the slot that was kept, so a later update into the other slot starts as a trial again and needs its own `k1os-slot keep`. (Up to 0.8.1 the file only had to exist and the next system inherited it; such a file keeps the old system and no newer one.)
 
 While `tools/flash-slot2.sh --write` writes a slot, the first block of its kernel and of its system is zero, and the trial boot does not point the marker at such a slot: if the write breaks off, the running system stays the next boot, and `k1os-slot status` says that the other slot holds no system. Run `--write` again. A Datel OS up to 0.8.1 in the running slot does not make this check.

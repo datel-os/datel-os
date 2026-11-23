@@ -14,6 +14,7 @@ SRC_URI = "file://after-volatile-lib.conf file://usr-data.mount file://k1os-data
            file://k1os-zram-swap file://k1os-zram-swap.service file://60-k1os-memory.conf file://k1os-memory-tmpfiles.conf \
            file://k1os-seed-webcam file://k1os-seed-webcam.service"
 SRC_URI += "file://k1os-htop.sh"
+SRC_URI += "file://k1os_slot.py file://k1os_slot.cfg file://k1os-slot-moonraker.conf file://k1os_slot_test.py"
 S = "${WORKDIR}"
 
 inherit systemd allarch
@@ -25,6 +26,8 @@ SYSTEMD_SERVICE:${PN} = "usr-data.mount k1os-datadir.service k1os-wifi.service \
 # against files in place of the eMMC, on the build host.
 do_compile() {
     sh ${WORKDIR}/k1os-slot-test.sh ${WORKDIR}/k1os-slot
+    # the Moonraker component that runs it for SLOT_STATUS and SLOT_KEEP
+    python3 ${WORKDIR}/k1os_slot_test.py ${WORKDIR}/k1os_slot.py ${WORKDIR}/k1os-slot
 }
 
 do_install() {
@@ -63,7 +66,13 @@ do_install() {
         install -m 0644 ${WORKDIR}/after-volatile-lib.conf ${D}${sysconfdir}/systemd/system/$u.d/10-after-volatile-lib.conf
     done
     install -D -m 0644 ${WORKDIR}/k1os-htop.sh ${D}${sysconfdir}/profile.d/k1os-htop.sh
+    # SLOT_STATUS and SLOT_KEEP from Mainsail: a Moonraker component (its section
+    # is appended to an existing moonraker.conf once by k1os-datadir-setup) and
+    # the macros that k1os_kalico.cfg includes
+    install -D -m 0644 ${WORKDIR}/k1os_slot.py ${D}${datadir}/moonraker/moonraker/components/k1os_slot.py
+    install -D -m 0644 ${WORKDIR}/k1os-slot-moonraker.conf ${D}${sysconfdir}/k1os/moonraker.d/k1os-slot.conf
+    install -D -m 0644 ${WORKDIR}/k1os_slot.cfg ${D}${datadir}/k1os/slot.cfg
 }
 
-FILES:${PN} += "${systemd_system_unitdir} /usr/data"
+FILES:${PN} += "${systemd_system_unitdir} /usr/data ${datadir}/moonraker ${datadir}/k1os"
 RDEPENDS:${PN} += "util-linux-mountpoint wpa-supplicant openssh-keygen iproute2"
