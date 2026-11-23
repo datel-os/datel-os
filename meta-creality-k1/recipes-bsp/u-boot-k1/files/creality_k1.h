@@ -78,9 +78,11 @@
 #define CONFIG_SPL_SERIAL_SUPPORT
 #define CONFIG_SPL_COMMAND_ICACHE
 
-/* 1 s autoboot delay: "Hit any key to stop autoboot" on J1, like the stock
- * U-Boot build had. */
-#define CONFIG_BOOTDELAY		1
+/* No autoboot delay: a second of every start is too much for a console
+ * nobody has connected. A key that is already held when U-Boot starts still
+ * stops it (J1), and "fw_setenv bootdelay 3" brings the wait back. */
+#define CONFIG_BOOTDELAY		0
+#define CONFIG_ZERO_BOOTDELAY_CHECK
 
 /*
  * eMMC on MSC0, 8 data lines on PD17..PD26 (CONFIG_JZ_MMC_MSC0_PD).
@@ -232,9 +234,10 @@
 	"k1_lcm_id=auto\0" \
 	"k1_console=ttyS2,115200n8\0" \
 	"k1_extra_args=\0" \
+	"k1_wdt=0\0" \
 	"k1_boot=k1slot select; k1slot load ${loadaddr} && " \
 		"setenv bootargs console=${k1_console} mem=${k1_mem} lcm_id=${k1_lcm} " \
-		"init=/linuxrc root=/dev/mmcblk0p${k1_root} rootwait rootfstype=squashfs ro ${k1_extra_args} && " \
+		"init=/linuxrc root=/dev/mmcblk0p${k1_root} rootwait rootfstype=squashfs ro k1_ubms=${k1_ms} ${k1_extra_args} && " \
 		"bootm ${loadaddr}\0"
 
 #endif /* __CONFIG_CREALITY_K1_H__ */
